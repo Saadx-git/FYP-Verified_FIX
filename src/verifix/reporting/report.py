@@ -15,3 +15,4 @@ class VerificationReport:
     assessments: list[PatchAssessment] = field(default_factory=list)
     attempts: int = 0
     cost: CostRecord = field(default_factory=CostRecord)
+    history: list[dict] = field(default_factory=list)  # one entry per attempt: diff, plan, decision, diagnosis

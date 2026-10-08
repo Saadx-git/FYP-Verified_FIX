@@ -135,9 +135,10 @@ class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   private async openReport(): Promise<void> {
-    if (!this.reportPath || !fs.existsSync(this.reportPath)) { return; }
-    const doc = await vscode.workspace.openTextDocument(this.reportPath);
-    await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: true });
+    const htmlPath = this.reportPath.replace(/\.json$/, ".html");
+    if (!this.reportPath || !fs.existsSync(htmlPath)) { return; }
+    const panel = vscode.window.createWebviewPanel("verifix.report", "Verifix report", vscode.ViewColumn.Beside, {});
+    panel.webview.html = fs.readFileSync(htmlPath, "utf8");
   }
 
   private html(webview: vscode.Webview): string {

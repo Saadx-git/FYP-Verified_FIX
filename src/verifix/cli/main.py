@@ -16,6 +16,7 @@ from verifix.issue.resolve import resolve_issue
 from verifix.issue.understanding import IssueUnderstander
 from verifix.llm.client import GroqClient
 from verifix.reporting.generator import HumanReadableReportGenerator, JSONReportGenerator
+from verifix.reporting.html import HTMLReportGenerator, report_from_json
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -46,7 +47,10 @@ def build_parser() -> argparse.ArgumentParser:
     ev.add_argument("--max-attempts", type=int, default=3)
     ev.add_argument("--model", help="override the Groq agent model id")
     ev.add_argument("--out", help="write full results JSON here")
-    sub.add_parser("report", help="TODO: render a saved report")
+    rp = sub.add_parser("report", help="Render a saved JSON report as HTML or text")
+    rp.add_argument("--input", required=True, help="report JSON written by `run --report`")
+    rp.add_argument("--format", choices=["html", "text"], default="html")
+    rp.add_argument("--out", help="output file (default: stdout)")
     return parser
 
 
@@ -83,8 +87,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.report:
             with open(args.report, "w") as fh:
                 fh.write(JSONReportGenerator().generate(report))
+            Path(args.report).with_suffix(".html").write_text(HTMLReportGenerator().generate(report))
         print(HumanReadableReportGenerator().generate(report), file=sys.stderr)
         return 0 if report.decision and report.decision.decision.value == "verified" else 1
+    if args.command == "report":
+        rep = report_from_json(Path(args.input).read_text())
+        text = (HTMLReportGenerator() if args.format == "html" else HumanReadableReportGenerator()).generate(rep)
+        Path(args.out).write_text(text) if args.out else print(text)
+        return 0
     if args.command == "evaluate":
         return _evaluate(args)
     print(f"verifix {args.command}: not implemented yet", file=sys.stderr)

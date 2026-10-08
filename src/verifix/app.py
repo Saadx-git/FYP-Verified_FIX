@@ -87,6 +87,9 @@ class VerifixApplication:
                 verification_cost=sum(r.cost for r in results),
             ))
             report.assessments.append(assessment)
+            entry = {"attempt": attempt, "patch_id": patch.patch_id, "diff": patch.diff, "plan": patch.plan.summary,
+                     "decision": decision.decision.value, "score": assessment.reliability_score, "diagnosis": None}
+            report.history.append(entry)
             report.final_patch, report.attempts = patch, attempt
             emit("decision", attempt=attempt, decision=decision.decision.value,
                  score=assessment.reliability_score, rationale=decision.rationale)
@@ -108,6 +111,8 @@ class VerifixApplication:
             feedback = self.feedback_generator.generate(diagnosis)
             repair = self.repair_selector.select(diagnosis, state)
             strategy_hint = {"strategy": repair.strategy_type.value, "previous_diff": patch.diff, **repair.parameters}
+            entry["diagnosis"] = {"category": diagnosis.category.value, "summary": feedback.summary,
+                                 "strategy": repair.strategy_type.value}
             emit("diagnosis", attempt=attempt, category=diagnosis.category.value,
                  summary=feedback.summary, details=feedback.details, strategy=repair.strategy_type.value)
 
