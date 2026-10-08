@@ -15,6 +15,7 @@ from verifix.evidence.store import EvidenceStore
 from verifix.feedback.generator import FeedbackGenerator
 from verifix.llm.client import GroqClient
 from verifix.patching.generator import PatchGenerator
+from verifix.sandbox.docker_sandbox import DockerSandbox
 from verifix.sandbox.local_sandbox import LocalSandbox
 from verifix.strategy.repair_selector import FixedRepairSelector, RepairStrategySelector
 from verifix.strategy.verification_selector import VerificationStrategySelector
@@ -41,6 +42,7 @@ class HarnessOptions:
     adaptive_stopping: bool = True
     adaptive_repair: bool = True
     fusion: str = "rules"            # "rules" | "tests_only"
+    sandbox: str = "local"           # "local" | "container"
     required: set[str] = field(default_factory=lambda: {"unit_tests"})
 
 
@@ -68,7 +70,7 @@ def build_application(agent: CodingAgent, options: HarnessOptions, emitter: Even
         config=config,
         agent_orchestrator=orchestrator,
         patch_generator=PatchGenerator(orchestrator),
-        sandbox=LocalSandbox(),
+        sandbox=DockerSandbox() if options.sandbox == "container" else LocalSandbox(),
         verification_orchestrator=VerificationOrchestrator(registry, store, emitter, config.verification.fail_fast),
         evidence_store=store,
         fusion_engine=EvidenceFusionEngine(required=options.required & set(enabled),

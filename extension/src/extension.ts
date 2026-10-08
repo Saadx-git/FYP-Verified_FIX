@@ -83,7 +83,8 @@ class SidebarProvider implements vscode.WebviewViewProvider {
     }
     const args = [...base, "run", "--repo", ws, ...issueArgs, "--events", "jsonl",
       "--report", this.reportPath, "--agent", cfg.get<string>("agent") ?? "groq",
-      "--max-attempts", String(cfg.get<number>("maxAttempts") ?? 3)];
+      "--max-attempts", String(cfg.get<number>("maxAttempts") ?? 3),
+      "--sandbox", cfg.get<string>("sandbox") ?? "local"];
     const fake = cfg.get<string>("fakePatches");
     if (fake) { args.push("--fake-patches", path.isAbsolute(fake) ? fake : path.join(ws, fake)); }
 

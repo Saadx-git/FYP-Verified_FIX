@@ -11,25 +11,30 @@ from verifix.sandbox.base import ExecutionRequest, ExecutionResult, ExecutionSan
 _IGNORE = shutil.ignore_patterns(".git", ".venv", "__pycache__", ".pytest_cache", "node_modules")
 
 
+def prepare_workspace(request: ExecutionRequest, workdir: Path) -> ExecutionResult | None:
+    """Copy the repo into `workdir` and apply the patch; returns a failure result if it does not apply."""
+    start = time.monotonic()
+    shutil.copytree(request.repo_path, workdir, ignore=_IGNORE)
+    if request.patch_diff.strip():
+        applied = subprocess.run(
+            ["git", "apply", "--whitespace=nowarn", "-"],
+            input=request.patch_diff, cwd=workdir, text=True, capture_output=True, check=False,
+        )
+        if applied.returncode != 0:
+            return ExecutionResult(exit_code=applied.returncode, stderr=f"patch failed to apply: {applied.stderr}",
+                                   duration_seconds=time.monotonic() - start)
+    return None
+
+
 class LocalSandbox(ExecutionSandbox):
-    """Runs commands in a throwaway copy of the repo (no container isolation)."""
+    """Runs commands in a throwaway copy of the repo (no process isolation; fast, for development)."""
 
     def execute(self, request: ExecutionRequest) -> ExecutionResult:
         start = time.monotonic()
         with tempfile.TemporaryDirectory(prefix="verifix-") as tmp:
             workdir = Path(tmp) / "repo"
-            shutil.copytree(request.repo_path, workdir, ignore=_IGNORE)
-            if request.patch_diff.strip():
-                applied = subprocess.run(
-                    ["git", "apply", "--whitespace=nowarn", "-"],
-                    input=request.patch_diff, cwd=workdir, text=True, capture_output=True, check=False,
-                )
-                if applied.returncode != 0:
-                    return ExecutionResult(
-                        exit_code=applied.returncode,
-                        stderr=f"patch failed to apply: {applied.stderr}",
-                        duration_seconds=time.monotonic() - start,
-                    )
+            if failed := prepare_workspace(request, workdir):
+                return failed
             try:
                 proc = subprocess.run(
                     request.command, cwd=workdir, text=True, capture_output=True, check=False,

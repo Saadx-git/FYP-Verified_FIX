@@ -26,6 +26,7 @@
         "verifix.projectDir": { "type": "string", "default": "", "description": "Directory of the Verifix Python project (where `uv run verifix` works). Auto-detected upward from the workspace if empty." },
         "verifix.agent": { "type": "string", "enum": ["groq", "fake"], "default": "groq", "description": "Coding agent backend." },
         "verifix.fakePatches": { "type": "string", "default": "", "description": "Directory of canned *.diff files (workspace-relative or absolute) for the fake agent." },
+        "verifix.sandbox": { "type": "string", "enum": ["local", "container"], "default": "local", "description": "Where generated code runs: 'container' uses rootless podman/docker with no network (slower first run: builds an image)." },
         "verifix.maxAttempts": { "type": "number", "default": 3, "description": "Maximum repair attempts." }
       }
     }

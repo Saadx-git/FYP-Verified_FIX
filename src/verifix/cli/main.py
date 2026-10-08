@@ -38,6 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--verifiers", help="comma-separated verifier names (default: all available)")
     run.add_argument("--feedback", choices=["targeted", "raw"], default="targeted")
     run.add_argument("--stopping", choices=["adaptive", "fixed"], default="adaptive")
+    run.add_argument("--sandbox", choices=["local", "container"], default="local", help="container = rootless podman/docker, no network")
     run.add_argument("--events", choices=["jsonl", "none"], default="none", help="stream JSONL events on stdout")
     run.add_argument("--report", help="write the JSON report to this path")
 
@@ -50,6 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     ver.add_argument("--verifiers")
     ver.add_argument("--feedback", default="targeted")
     ver.add_argument("--stopping", default="adaptive")
+    ver.add_argument("--sandbox", choices=["local", "container"], default="local")
     ver.add_argument("--events", choices=["jsonl", "none"], default="none")
     ver.add_argument("--report")
     ev = sub.add_parser("evaluate", help="Run baselines / full system / ablations over a dataset")
@@ -83,6 +85,7 @@ def build_application(args: argparse.Namespace, emitter: EventEmitter) -> Verifi
     options = HarnessOptions(
         verifiers=args.verifiers.split(",") if args.verifiers else list(ALL_VERIFIERS),
         max_attempts=args.max_attempts, feedback=args.feedback, adaptive_stopping=args.stopping == "adaptive",
+        sandbox=args.sandbox,
     )
     return build(_build_agent(args, config), options, emitter, config=config)
 
