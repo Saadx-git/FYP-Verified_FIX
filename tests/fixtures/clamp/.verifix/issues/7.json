@@ -1,0 +1,12 @@
+{
+  "issue_id": "7",
+  "title": "clamp does not restrict values to the range",
+  "body": "clamp(x, lo, hi) returns x unchanged. It must return lo when x < lo, hi when x > hi, otherwise x.",
+  "target_file": "mathx/clamp.py",
+  "fail_to_pass": ["test_clamp_high"],
+  "pass_to_pass": ["test_in_range_unchanged"],
+  "requirements": [
+    {"id": "R1", "description": "upper bound", "observed_behavior": "values above hi are returned", "expected_behavior": "returns hi"},
+    {"id": "R2", "description": "lower bound", "observed_behavior": "values below lo are returned", "expected_behavior": "returns lo"}
+  ]
+}

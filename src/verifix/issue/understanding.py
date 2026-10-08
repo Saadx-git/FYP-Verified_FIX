@@ -1,0 +1,37 @@
+from __future__ import annotations
+
+from verifix.llm.client import GroqClient
+from verifix.models.issue import Issue, IssueRequirement
+from verifix.repository.explorer import RepositoryExplorer
+from verifix.verification.verifiers._llm import ask_json
+
+SYSTEM = (
+    "You turn a free-text bug report into a structured task for an automated repair system. "
+    "Be faithful: do not invent behaviour the report does not imply. Each requirement is one checkable behaviour. "
+    "target_file must be copied EXACTLY from the provided file list, or empty if you cannot tell. "
+    'Respond with JSON: {"title":str,"requirements":[{"id":"R1","description":str,"observed_behavior":str,'
+    '"expected_behavior":str}],"acceptance_criteria":[str],"target_file":str}'
+)
+
+
+class IssueUnderstander:
+    """Phase 1 / step 1 of the proposal: free text -> structured issue (requirements, criteria, likely file)."""
+
+    def __init__(self, client: GroqClient, model: str) -> None:
+        self.client, self.model = client, model
+
+    def understand(self, issue_id: str, text: str, repo_path: str, title: str = "") -> Issue:
+        files = [f for f in RepositoryExplorer().list_files(repo_path) if f.endswith(".py")][:80]
+        data, _ = ask_json(self.client, self.model, SYSTEM,
+                           f"Bug report:\n{text[:4000]}\n\nPython files in the repository:\n" + "\n".join(files))
+        reqs = [IssueRequirement(id=str(r.get("id") or f"R{i}"), description=str(r.get("description", "")),
+                                 observed_behavior=str(r.get("observed_behavior", "")),
+                                 expected_behavior=str(r.get("expected_behavior", "")))
+                for i, r in enumerate(data.get("requirements", []), 1) if isinstance(r, dict)]
+        target = data.get("target_file", "")
+        first_line = text.strip().splitlines()[0][:100] if text.strip() else issue_id
+        return Issue(
+            issue_id=issue_id, repo=repo_path, title=title or str(data.get("title") or first_line), body=text,
+            requirements=reqs, acceptance_criteria=[str(c) for c in data.get("acceptance_criteria", [])][:8],
+            target_file=target if target in files else "",
+        )

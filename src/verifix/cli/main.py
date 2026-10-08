@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
 from verifix.agent.base import CodingAgent
 from verifix.agent.fake import FakeAgent
@@ -11,6 +12,8 @@ from verifix.config.models import VerifixConfig
 from verifix.events.emitter import EventEmitter
 from verifix.factory import ALL_VERIFIERS, HarnessOptions
 from verifix.factory import build_application as build
+from verifix.issue.resolve import resolve_issue
+from verifix.issue.understanding import IssueUnderstander
 from verifix.llm.client import GroqClient
 from verifix.reporting.generator import HumanReadableReportGenerator, JSONReportGenerator
 
@@ -22,7 +25,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     run = sub.add_parser("run", help="Run verify-and-repair on an issue")
     run.add_argument("--repo", required=True)
-    run.add_argument("--issue", required=True, help="issue id or path to an issue JSON file")
+    run.add_argument("--issue", help="saved issue id, issue JSON path, GitHub issue URL, or #N")
+    run.add_argument("--description", help="plain-English bug description (alternative to --issue)")
+    run.add_argument("--description-file", help="file containing the bug description")
     run.add_argument("--agent", choices=["fake", "groq"], default="groq")
     run.add_argument("--fake-patches", help="directory of *.diff files for --agent fake")
     run.add_argument("--model", help="override the Groq agent model id")
@@ -66,7 +71,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "run":
         emitter = EventEmitter(sys.stdout if args.events == "jsonl" else None)
         try:
-            report = build_application(args, emitter).run(repo=args.repo, issue_id=args.issue)
+            description = Path(args.description_file).read_text() if args.description_file else args.description
+            config = VerifixConfig()
+            understander = IssueUnderstander(GroqClient(), config.model.diagnosis_model)
+            issue_id = resolve_issue(args.repo, ref=args.issue, description=description,
+                                     understander=understander, emitter=emitter)
+            report = build_application(args, emitter).run(repo=args.repo, issue_id=issue_id)
         except (RuntimeError, FileNotFoundError) as exc:
             print(f"verifix: {exc}", file=sys.stderr)
             return 2

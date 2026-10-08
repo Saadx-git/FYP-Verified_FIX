@@ -26,15 +26,19 @@ class LLMResponse:
         return self.prompt_tokens + self.completion_tokens
 
 
-def load_api_key() -> str:
-    """GROQ_API_KEY from the environment, falling back to a gitignored .env in the cwd."""
-    key = os.environ.get("GROQ_API_KEY", "")
+def env_value(name: str) -> str:
+    """Value from the environment, falling back to a gitignored .env in the cwd."""
+    value = os.environ.get(name, "")
     env = Path(".env")
-    if not key and env.is_file():
+    if not value and env.is_file():
         for line in env.read_text().splitlines():
-            if line.startswith("GROQ_API_KEY="):
-                key = line.split("=", 1)[1].strip().strip("\"'")
-    return key
+            if line.startswith(f"{name}="):
+                value = line.split("=", 1)[1].strip().strip("\"'")
+    return value
+
+
+def load_api_key() -> str:
+    return env_value("GROQ_API_KEY")
 
 
 class GroqClient:

@@ -6,7 +6,9 @@ __pycache__/
 node_modules/
 extension/out/
 *.vsix
-.verifix/
+**/.verifix/runs/
+**/.verifix/issues/adhoc-*.json
+**/.verifix/issues/gh-*.json
 .obsidian-index/.obsidian/workspace.json
 .env
-.verifix/cache/
+**/.verifix/cache/
