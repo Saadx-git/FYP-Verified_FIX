@@ -1,0 +1,16 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Verifix Extension (discount fixture)",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "${workspaceFolder}/tests/fixtures/discount",
+        "--extensionDevelopmentPath=${workspaceFolder}/extension"
+      ],
+      "outFiles": ["${workspaceFolder}/extension/out/**/*.js"],
+      "preLaunchTask": "verifix: build extension"
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "name": "verifix",
+  "displayName": "Verifix",
+  "description": "Evidence-verified AI code repair: generate, verify, diagnose, repair.",
+  "version": "0.1.0",
+  "publisher": "verifix",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [{ "id": "verifix", "title": "Verifix", "icon": "media/icon.svg" }]
+    },
+    "views": {
+      "verifix": [{ "type": "webview", "id": "verifix.sidebar", "name": "Verifix" }]
+    },
+    "commands": [
+      { "command": "verifix.run", "title": "Verifix: Run on Selected Issue" },
+      { "command": "verifix.refreshIssues", "title": "Verifix: Refresh Issues" }
+    ],
+    "configuration": {
+      "title": "Verifix",
+      "properties": {
+        "verifix.command": { "type": "array", "items": { "type": "string" }, "default": ["uv", "run", "verifix"], "description": "Command used to launch the Verifix CLI." },
+        "verifix.projectDir": { "type": "string", "default": "", "description": "Directory of the Verifix Python project (where `uv run verifix` works). Auto-detected upward from the workspace if empty." },
+        "verifix.agent": { "type": "string", "enum": ["groq", "fake"], "default": "groq", "description": "Coding agent backend." },
+        "verifix.fakePatches": { "type": "string", "default": "", "description": "Directory of canned *.diff files (workspace-relative or absolute) for the fake agent." },
+        "verifix.maxAttempts": { "type": "number", "default": 3, "description": "Maximum repair attempts." }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "watch": "tsc -p . --watch",
+    "package": "npx @vscode/vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.5.0"
+  }
+}

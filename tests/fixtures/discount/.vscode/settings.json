@@ -1,0 +1,4 @@
+{
+  "verifix.agent": "fake",
+  "verifix.fakePatches": "patches"
+}
