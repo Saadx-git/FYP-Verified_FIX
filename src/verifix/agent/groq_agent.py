@@ -10,11 +10,14 @@ from verifix.agent.base import AgentRequest, AgentResponse, CodingAgent
 from verifix.llm.client import GroqClient
 from verifix.models.patch import CandidatePatch, PatchMetadata, RepairPlan
 from verifix.repository.context_retriever import ContextRetriever
+from verifix.repository.dependency_analyzer import DependencyAnalyzer
 from verifix.repository.file_inspector import FileInspector
 from verifix.repository.symbol_searcher import SymbolSearcher
 
 _IGNORE = shutil.ignore_patterns(".git", ".venv", "__pycache__", ".pytest_cache", "node_modules", ".verifix")
 _MAX_OBS = 3000
+# strategies whose next attempt starts from the previous patch (others start from the original files)
+BUILD_ON_PREVIOUS = {"revise_patch", "address_security"}
 
 SYSTEM = (
     "You are a careful software engineer fixing a bug in a Python repository. Work in small steps: "
@@ -49,7 +52,15 @@ class GroqAgent(CodingAgent):
             self._git(work, "init", "-q")
             self._git(work, "add", "-A")
             self._git(work, "-c", "user.name=v", "-c", "user.email=v@v", "commit", "-q", "-m", "base", "--allow-empty")
-            messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": self._prompt(request)}]
+            strategy = request.context.get("strategy", "")
+            previous = request.context.get("previous_diff", "")
+            built_on_previous = False
+            if previous and strategy in BUILD_ON_PREVIOUS:  # revise: the earlier patch is already in the files
+                applied = subprocess.run(["git", "apply", "--whitespace=nowarn", "-"], input=previous, cwd=work,
+                                         text=True, capture_output=True, check=False)
+                built_on_previous = applied.returncode == 0
+            prompt = self._prompt(request, work, built_on_previous)
+            messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]
             tokens, summary, confidence = 0, "", 0.5
             for _ in range(self.max_steps):
                 resp = self.client.chat(self.model, messages, tools=TOOLS, max_tokens=4096, reasoning_effort="low")
@@ -80,9 +91,10 @@ class GroqAgent(CodingAgent):
             agent_name=f"groq:{self.model}", agent_confidence=confidence, tokens_used=tokens))
         return AgentResponse(patch=patch, plan=plan, raw_output=summary)
 
-    def _prompt(self, req: AgentRequest) -> str:
+    def _prompt(self, req: AgentRequest, work: Path, built_on_previous: bool) -> str:
         issue = req.issue
-        ctx = ContextRetriever().retrieve(req.repo_path, issue)
+        # when a previous patch is applied, describe the code as it is now, not as in the original repo
+        ctx = ContextRetriever().retrieve(str(work if built_on_previous else req.repo_path), issue)
         parts = [f"Issue #{issue.issue_id}: {issue.title}\n{issue.body}"]
         if issue.acceptance_criteria:
             parts.append("Acceptance criteria:\n- " + "\n- ".join(issue.acceptance_criteria))
@@ -94,12 +106,27 @@ class GroqAgent(CodingAgent):
         if "target_excerpt" in ctx:
             parts.append(f"{ctx['target_file']}:\n{ctx['target_excerpt']}")
         if req.feedback:
+            strategy, previous = req.context.get("strategy", ""), req.context.get("previous_diff", "")
             parts.append("Your previous attempt FAILED verification.\nFeedback: " + req.feedback.summary
                          + "\n" + "\n".join(req.feedback.details))
-            if req.context.get("previous_diff"):
-                parts.append("Previous diff (do not repeat its mistake):\n" + req.context["previous_diff"][:3000])
-            if req.context.get("strategy") == "reexplore_repository":
-                parts.append("Re-explore the repository before editing; your earlier approach did not work.")
+            if built_on_previous:
+                parts.append("Your previous patch is ALREADY APPLIED to the files you can read. Make the smallest further "
+                             "change that fixes the problem above. Do not start over or undo working parts."
+                             + (" Remove the unsafe construct but keep the behaviour." if strategy == "address_security" else ""))
+            elif strategy == "regenerate_patch":
+                parts.append("Discard your earlier approach entirely and solve the issue a different way. "
+                             "(The earlier diff is intentionally not shown so you do not anchor on it.)")
+            elif strategy == "fix_environment":
+                parts.append("The patch could not be applied or run. Produce a clean, minimal diff against the original files.")
+            else:  # reexplore_repository, or no strategy given: show the failed diff
+                if previous:
+                    parts.append("Previous diff (do not repeat its mistake):\n" + previous[:3000])
+                if strategy == "reexplore_repository":
+                    target = issue.target_file
+                    users = DependencyAnalyzer().dependents(req.repo_path, target) if target else []
+                    parts.append("Re-explore the repository before editing; your earlier approach did not work. Read more of the "
+                                 "relevant code first (search and read at least two files you have not looked at)."
+                                 + (f" Files that import {target}: {', '.join(users[:8])}." if users else ""))
         return "\n\n".join(parts)
 
     def _tool(self, work: Path, name: str, args: dict) -> str:

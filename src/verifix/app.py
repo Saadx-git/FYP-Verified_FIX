@@ -12,7 +12,7 @@ from verifix.evidence.store import EvidenceStore
 from verifix.feedback.generator import FeedbackGenerator
 from verifix.issue.loader import load_issue
 from verifix.models.cost import CostRecord
-from verifix.models.evidence import DecisionType, VerificationDecision
+from verifix.models.evidence import DecisionType, VerificationDecision, VerificationStatus
 from verifix.patching.generator import PatchGenerator
 from verifix.patching.ranking import PatchRanker
 from verifix.reporting.report import VerificationReport
@@ -80,6 +80,8 @@ class VerifixApplication:
 
             context = VerificationContext(issue=issue, patch=patch, repo_path=repo, sandbox=self.sandbox)
             plan = self.verification_selector.select(patch, self.budget_tracker.state())
+            emit("verification_plan", attempt=attempt, verifiers=plan.verifier_names,
+                 focus=plan.parameters.get("focus", []), reason=plan.parameters.get("reason", ""))
             results = self.verification_orchestrator.run(context, plan)
             assessment = self.fusion_engine.fuse(patch.patch_id, results)
             decision = self.fusion_engine.decide(assessment)
@@ -113,6 +115,7 @@ class VerifixApplication:
             diagnosis = self.diagnoser.diagnose(patch, assessment)
             feedback = self.feedback_generator.generate(diagnosis)
             repair = self.repair_selector.select(diagnosis, state)
+            self.verification_selector.observe(diagnosis, [r.verifier_name for r in results if r.status is VerificationStatus.FAIL])
             strategy_hint = {"strategy": repair.strategy_type.value, "previous_diff": patch.diff, **repair.parameters}
             entry["diagnosis"] = {"category": diagnosis.category.value, "summary": feedback.summary,
                                  "strategy": repair.strategy_type.value}
