@@ -12,3 +12,4 @@ extension/out/
 .obsidian-index/.obsidian/workspace.json
 .env
 **/.verifix/cache/
+**/.verifix/runs.db
