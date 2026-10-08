@@ -7,10 +7,11 @@ from dataclasses import dataclass, field
 class ModelConfig:
     """Which LLM(s) to use for each role."""
 
-    agent_model: str = ""
-    reviewer_model: str = ""
-    diagnosis_model: str = ""
-    provider: str = ""
+    # Groq model ids; override via config/CLI if Groq renames or retires one
+    agent_model: str = "llama-3.3-70b-versatile"
+    reviewer_model: str = "llama-3.1-8b-instant"
+    diagnosis_model: str = "llama-3.1-8b-instant"
+    provider: str = "groq"
 
 
 @dataclass

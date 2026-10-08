@@ -8,3 +8,5 @@ extension/out/
 *.vsix
 .verifix/
 .obsidian-index/.obsidian/workspace.json
+.env
+.verifix/cache/
