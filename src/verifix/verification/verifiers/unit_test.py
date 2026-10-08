@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import sys
+from pathlib import Path
 
 from verifix.models.evidence import (
     Evidence,
@@ -23,6 +24,8 @@ class UnitTestVerifier(Verifier):
     def verify(self, context: VerificationContext) -> VerificationResult:
         issue = context.issue
         command = issue.test_command or [sys.executable, "-m", "pytest", "-q", "-rA", "-p", "no:cacheprovider"]
+        if not issue.test_command and Path(context.repo_path, "tests/integration").is_dir():
+            command += ["--ignore=tests/integration"]
         res = context.sandbox.execute(
             ExecutionRequest(
                 command=command, repo_path=context.repo_path,

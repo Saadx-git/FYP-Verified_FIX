@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 from verifix.agent.base import CodingAgent
@@ -17,6 +18,7 @@ from verifix.issue.understanding import IssueUnderstander
 from verifix.llm.client import GroqClient
 from verifix.reporting.generator import HumanReadableReportGenerator, JSONReportGenerator
 from verifix.reporting.html import HTMLReportGenerator, report_from_json
+from verifix.store.runs import RunStore
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -39,7 +41,17 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--events", choices=["jsonl", "none"], default="none", help="stream JSONL events on stdout")
     run.add_argument("--report", help="write the JSON report to this path")
 
-    sub.add_parser("verify", help="TODO: verify an existing patch")
+    ver = sub.add_parser("verify", help="Verify an existing patch (no agent): exit 0 only if VERIFIED")
+    ver.add_argument("--repo", required=True)
+    ver.add_argument("--patch", required=True, help="unified git diff file to verify")
+    ver.add_argument("--issue", help="saved issue id, issue JSON path, GitHub issue URL, or #N")
+    ver.add_argument("--description", help="plain-English description of what the patch should fix")
+    ver.add_argument("--description-file")
+    ver.add_argument("--verifiers")
+    ver.add_argument("--feedback", default="targeted")
+    ver.add_argument("--stopping", default="adaptive")
+    ver.add_argument("--events", choices=["jsonl", "none"], default="none")
+    ver.add_argument("--report")
     ev = sub.add_parser("evaluate", help="Run baselines / full system / ablations over a dataset")
     ev.add_argument("--dataset", required=True, help="JSON list of instances")
     ev.add_argument("--config", default="full", help="comma-separated config names, or 'all' (see evaluation/baseline.py)")
@@ -48,13 +60,18 @@ def build_parser() -> argparse.ArgumentParser:
     ev.add_argument("--model", help="override the Groq agent model id")
     ev.add_argument("--out", help="write full results JSON here")
     rp = sub.add_parser("report", help="Render a saved JSON report as HTML or text")
-    rp.add_argument("--input", required=True, help="report JSON written by `run --report`")
+    rp.add_argument("--input", help="report JSON written by `run --report`")
+    rp.add_argument("--repo", help="repo whose run history to read (.verifix/runs.db)")
+    rp.add_argument("--list", action="store_true", help="list recent runs for --repo")
+    rp.add_argument("--run", type=int, help="render run N from --repo's history")
     rp.add_argument("--format", choices=["html", "text"], default="html")
     rp.add_argument("--out", help="output file (default: stdout)")
     return parser
 
 
 def _build_agent(args: argparse.Namespace, config: VerifixConfig) -> CodingAgent:
+    if args.agent == "patch":
+        return FakeAgent([Path(args.patch).read_text()])
     if args.agent == "fake":
         return FakeAgent.from_dir(args.fake_patches) if args.fake_patches else FakeAgent([])
     model = config.model.agent_model if args.model is None else args.model
@@ -72,7 +89,9 @@ def build_application(args: argparse.Namespace, emitter: EventEmitter) -> Verifi
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.command == "run":
+    if args.command == "verify":
+        args.agent, args.max_attempts, args.model = "patch", 1, None
+    if args.command in ("run", "verify"):
         emitter = EventEmitter(sys.stdout if args.events == "jsonl" else None)
         try:
             description = Path(args.description_file).read_text() if args.description_file else args.description
@@ -84,14 +103,26 @@ def main(argv: list[str] | None = None) -> int:
         except (RuntimeError, FileNotFoundError) as exc:
             print(f"verifix: {exc}", file=sys.stderr)
             return 2
+        RunStore(str(Path(args.repo) / ".verifix" / "runs.db")).save(
+            report.issue_id, report.decision.decision.value, report.attempts, report.cost.tokens,
+            report.decision.assessment.reliability_score, JSONReportGenerator().generate(report))
         if args.report:
+            Path(args.report).parent.mkdir(parents=True, exist_ok=True)
             with open(args.report, "w") as fh:
                 fh.write(JSONReportGenerator().generate(report))
             Path(args.report).with_suffix(".html").write_text(HTMLReportGenerator().generate(report))
         print(HumanReadableReportGenerator().generate(report), file=sys.stderr)
         return 0 if report.decision and report.decision.decision.value == "verified" else 1
     if args.command == "report":
-        rep = report_from_json(Path(args.input).read_text())
+        if args.list:
+            for rid, created, issue, decision, attempts, tokens, score in RunStore(str(Path(args.repo) / ".verifix" / "runs.db")).list():
+                print(f"#{rid:<4} {time.strftime('%Y-%m-%d %H:%M', time.localtime(created))}  issue {issue:<14} {decision:<22} attempts={attempts} tokens={tokens} score={score}")
+            return 0
+        raw = RunStore(str(Path(args.repo) / ".verifix" / "runs.db")).get(args.run) if args.run else Path(args.input).read_text()
+        if raw is None:
+            print(f"verifix: run #{args.run} not found", file=sys.stderr)
+            return 2
+        rep = report_from_json(raw)
         text = (HTMLReportGenerator() if args.format == "html" else HumanReadableReportGenerator()).generate(rep)
         Path(args.out).write_text(text) if args.out else print(text)
         return 0

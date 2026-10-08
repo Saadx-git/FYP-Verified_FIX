@@ -15,7 +15,7 @@
 
   function icon(st) {
     return st === "pass" ? '<span class="ico ok">✓</span>' : st === "fail" ? '<span class="ico fail">✗</span>'
-      : st === "running" ? '<span class="ico spin">◌</span>' : st === "skipped" ? '<span class="ico">–</span>' : '<span class="ico warn">⚠</span>';
+      : st === "running" ? '<span class="ico spin">◌</span>' : st === "skipped" || st === "not_run" ? '<span class="ico">–</span>' : '<span class="ico warn">⚠</span>';
   }
 
   function render() {

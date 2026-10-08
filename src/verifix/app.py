@@ -14,6 +14,7 @@ from verifix.issue.loader import load_issue
 from verifix.models.cost import CostRecord
 from verifix.models.evidence import DecisionType, VerificationDecision
 from verifix.patching.generator import PatchGenerator
+from verifix.patching.ranking import PatchRanker
 from verifix.reporting.report import VerificationReport
 from verifix.sandbox.base import ExecutionSandbox
 from verifix.strategy.repair_selector import RepairStrategySelector
@@ -65,6 +66,7 @@ class VerifixApplication:
         emit("issue_loaded", issue_id=issue.issue_id, title=issue.title, target_file=issue.target_file)
 
         report = VerificationReport(issue_id=issue.issue_id)
+        patches: list = []
         feedback = None
         strategy_hint: dict = {}
         previous_diff: str | None = None
@@ -87,6 +89,7 @@ class VerifixApplication:
                 verification_cost=sum(r.cost for r in results),
             ))
             report.assessments.append(assessment)
+            patches.append(patch)
             entry = {"attempt": attempt, "patch_id": patch.patch_id, "diff": patch.diff, "plan": patch.plan.summary,
                      "decision": decision.decision.value, "score": assessment.reliability_score, "diagnosis": None}
             report.history.append(entry)
@@ -116,6 +119,9 @@ class VerifixApplication:
             emit("diagnosis", attempt=attempt, category=diagnosis.category.value,
                  summary=feedback.summary, details=feedback.details, strategy=repair.strategy_type.value)
 
+        if decision.decision is not DecisionType.VERIFIED and len(patches) > 1:
+            best = PatchRanker().rank(patches, report.assessments)[0]  # report the most trustworthy attempt, not just the last
+            report.final_patch = best
         report.decision = decision
         report.cost = self.budget_tracker.state().spent
         emit("run_finished", decision=decision.decision.value, attempts=report.attempts,
