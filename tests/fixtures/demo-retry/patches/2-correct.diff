@@ -1,0 +1,9 @@
+diff --git a/pricing/discount.py b/pricing/discount.py
+--- a/pricing/discount.py
++++ b/pricing/discount.py
+@@ -1,4 +1,4 @@
+ def apply_discount(amount, rate):
+     """Return the amount after applying a discount rate (0..1). Never negative."""
+     discount = amount * rate
+-    return discount
++    return max(0, amount - discount)

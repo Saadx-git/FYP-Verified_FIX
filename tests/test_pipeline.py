@@ -37,3 +37,13 @@ def test_security_verifier_blocks_eval_patch(tmp_path, capsys):
     first = [e["data"] for e in events if e["type"] == "verifier_finished" and e["data"]["patch_id"] == "patch-1"]
     status = {d["verifier"]: d["status"] for d in first}
     assert status["unit_tests"] == "pass" and status["security"] == "fail"
+
+
+def test_demo_retry_fixture_shows_planned_failure_then_success(tmp_path, capsys):
+    demo = FIXTURE.parent / "demo-retry"
+    out = tmp_path / "r.json"
+    code = main(["run", "--repo", str(demo), "--issue", "142", "--agent", "fake", "--fake-patches", str(demo / "patches"),
+                 "--verifiers", "unit_tests,static_analysis,security", "--report", str(out)])
+    capsys.readouterr()
+    report = json.loads(out.read_text())
+    assert code == 0 and report["attempts"] == 2 and report["history"][0]["decision"] == "repair_required"

@@ -6,6 +6,7 @@
   let issues = [];
   let selected = "";
   let draft = "";
+  let agent = "groq";
   const NEW = "__new__";
   let s = fresh();
 
@@ -22,7 +23,8 @@
     const isNew = selected === NEW;
     const issue = issues.find((i) => i.id === selected);
     const running = s.phase === "running";
-    let h = `<h4>Active GitHub issue</h4><select id="issue" ${running ? "disabled" : ""}>` +
+    let h = agent === "fake" ? `<div class="card warn"><span class="ico warn">⚠</span><div><b>DEMO MODE</b><div class="sub">Canned agent with a planned first failure. Not a real run.</div></div></div>` : "";
+    h += `<h4>Active GitHub issue</h4><select id="issue" ${running ? "disabled" : ""}>` +
       issues.map((i) => `<option value="${esc(i.id)}" ${i.id === selected ? "selected" : ""}>#${esc(i.id)} — ${esc(i.title)}</option>`).join("") +
       `<option value="${NEW}" ${isNew ? "selected" : ""}>＋ New issue…</option></select>`;
     if (isNew && !running) {
@@ -114,7 +116,8 @@
 
   window.addEventListener("message", (e) => {
     const m = e.data;
-    if (m.type === "issues") { issues = m.issues; if (selected !== NEW && !issues.find((i) => i.id === selected)) selected = issues[0]?.id ?? NEW; render(); }
+    if (m.type === "mode") { agent = m.agent; render(); }
+    else if (m.type === "issues") { issues = m.issues; if (selected !== NEW && !issues.find((i) => i.id === selected)) selected = issues[0]?.id ?? NEW; render(); }
     else if (m.type === "reset") { s = fresh(); s.phase = "running"; render(); }
     else if (m.type === "event") onEvent(m.event);
     else if (m.type === "log") { s.logs += m.text; render(); }

@@ -25,6 +25,7 @@ class SidebarProvider implements vscode.WebviewViewProvider {
   post(msg: unknown): void { this.view?.webview.postMessage(msg); }
 
   refreshIssues(): void {
+    this.post({ type: "mode", agent: vscode.workspace.getConfiguration("verifix").get<string>("agent") ?? "groq" });
     this.post({ type: "issues", issues: this.findIssues() });
   }
 

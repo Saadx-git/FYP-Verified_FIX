@@ -35,8 +35,8 @@ Useful flags: `--sandbox container` (rootless podman/docker, no network), `--ver
 ```bash
 cd extension && npm install && npm run build
 ```
-Open this repo in VS Code and press **F5** (two launch configs: canned-agent demo on `tests/fixtures/discount`, and the live
-Groq agent on `tests/fixtures/clamp`). In the Verifix sidebar pick **＋ New issue…**, describe the bug or paste a GitHub link,
+Open this repo in VS Code and press **F5**. The default configs use the **live Groq agent** (`discount` and `clamp` repos, no planned failures).
+A separate, clearly marked **DEMO ONLY** config (`tests/fixtures/demo-retry`) replays canned patches, including a planned bad first attempt, to show the retry flow; the sidebar shows a DEMO MODE banner there. In the Verifix sidebar pick **＋ New issue…**, describe the bug or paste a GitHub link,
 and press Run. Settings: `verifix.command`, `verifix.projectDir`, `verifix.agent` (groq|fake), `verifix.sandbox`, `verifix.maxAttempts`.
 
 ## GitHub Action
