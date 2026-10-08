@@ -23,6 +23,7 @@ from verifix.verification.orchestrator import VerificationOrchestrator
 from verifix.verification.registry import VerifierRegistry
 from verifix.verification.verifiers.integration_test import IntegrationTestVerifier
 from verifix.verification.verifiers.llm_review import LLMReviewVerifier
+from verifix.verification.verifiers.mutation import MutationVerifier
 from verifix.verification.verifiers.reproduction import ReproductionVerifier
 from verifix.verification.verifiers.requirement import RequirementVerifier
 from verifix.verification.verifiers.security import SecurityVerifier
@@ -55,7 +56,7 @@ def build_application(agent: CodingAgent, options: HarnessOptions, emitter: Even
     emitter = emitter or EventEmitter()
 
     registry = VerifierRegistry()
-    candidates = [UnitTestVerifier(), StaticAnalysisVerifier(), SecurityVerifier(), IntegrationTestVerifier(),
+    candidates = [UnitTestVerifier(), StaticAnalysisVerifier(), SecurityVerifier(), IntegrationTestVerifier(), MutationVerifier(),
                   ReproductionVerifier(client, config.model.agent_model),
                   RequirementVerifier(client, config.model.reviewer_model),
                   LLMReviewVerifier(client, config.model.reviewer_model)]

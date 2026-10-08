@@ -50,7 +50,7 @@ See `docs/verifix-pr.example.yml`.
 | `issue/` | free text / GitHub URL → structured issue (LLM understanding), cached in `.verifix/issues/` |
 | `repository/` | file listing, AST symbol search, grep, import graph, context retrieval |
 | `sandbox/` | `LocalSandbox` (temp copy), `DockerSandbox` (rootless container, no network, limits) |
-| `verification/` | orchestrator + registry + 7 verifiers (`verifiers/`); expensive ones skipped after a cheap failure |
+| `verification/` | orchestrator + registry + 8 verifiers (`verifiers/`); expensive ones skipped after a cheap failure |
 | `evidence/` | in-memory store; rule-based fusion + reliability score |
 | `diagnosis/`, `feedback/` | failure classification → targeted (or raw) feedback for the agent |
 | `strategy/`, `control/` | repair/verification strategy selection, budget tracking, cost-aware stopping |
@@ -62,4 +62,4 @@ See `docs/verifix-pr.example.yml`.
 ## Known limitations
 - Python repositories only. Dependencies of the target repo are not installed automatically (container `install=True` exists but is not exposed yet).
 - LLM verifiers (requirement, review, reproduction) can be wrong either way; the review is advisory by design. Measure false rejection with `evaluate`.
-- Diagnosis is rule-based; mutation testing and semgrep are not implemented; the bundled benchmark is a 2-instance toy, not SWE-bench.
+- Diagnosis is rule-based; semgrep is not implemented; mutation testing is a lightweight opt-in verifier (`--verifiers …,mutation`); the bundled benchmark is a 2-instance toy, not SWE-bench.
