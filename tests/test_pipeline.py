@@ -26,7 +26,14 @@ def test_repairs_on_second_attempt(tmp_path, capsys):
 def test_rejects_when_budget_exhausted(tmp_path, capsys):
     wrong_only = tmp_path / "p"
     wrong_only.mkdir()
-    (wrong_only / "1.diff").write_text((FIXTURE / "patches" / "1-wrong.diff").read_text())
+    (wrong_only / "1.diff").write_text((Path(__file__).parent / "data" / "unit_fail.diff").read_text())
     code, _events, report = _run(tmp_path, wrong_only, capsys, ["--max-attempts", "2"])
     assert code == 1
     assert report["decision"]["decision"] == "reject" and report["attempts"] == 2
+
+
+def test_security_verifier_blocks_eval_patch(tmp_path, capsys):
+    _, events, _ = _run(tmp_path, FIXTURE / "patches", capsys)
+    first = [e["data"] for e in events if e["type"] == "verifier_finished" and e["data"]["patch_id"] == "patch-1"]
+    status = {d["verifier"]: d["status"] for d in first}
+    assert status["unit_tests"] == "pass" and status["security"] == "fail"

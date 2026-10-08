@@ -19,6 +19,7 @@ class LLMResponse:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     cached: bool = False
+    message: dict = field(default_factory=dict)
 
     @property
     def tokens(self) -> int:
@@ -102,5 +103,5 @@ class GroqClient:
         return LLMResponse(
             text=msg.get("content") or "", tool_calls=msg.get("tool_calls") or [],
             prompt_tokens=0 if cached else usage.get("prompt_tokens", 0),
-            completion_tokens=0 if cached else usage.get("completion_tokens", 0), cached=cached,
+            completion_tokens=0 if cached else usage.get("completion_tokens", 0), cached=cached, message=msg,
         )

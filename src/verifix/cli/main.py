@@ -5,6 +5,7 @@ import sys
 
 from verifix.agent.base import CodingAgent
 from verifix.agent.fake import FakeAgent
+from verifix.agent.groq_agent import GroqAgent
 from verifix.agent.orchestrator import AgentOrchestrator
 from verifix.app import VerifixApplication
 from verifix.config.models import VerifixConfig
@@ -15,6 +16,7 @@ from verifix.events.emitter import EventEmitter
 from verifix.evidence.fusion import EvidenceFusionEngine
 from verifix.evidence.store import EvidenceStore
 from verifix.feedback.generator import FeedbackGenerator
+from verifix.llm.client import GroqClient
 from verifix.patching.generator import PatchGenerator
 from verifix.reporting.generator import HumanReadableReportGenerator, JSONReportGenerator
 from verifix.sandbox.local_sandbox import LocalSandbox
@@ -22,6 +24,8 @@ from verifix.strategy.repair_selector import RepairStrategySelector
 from verifix.strategy.verification_selector import VerificationStrategySelector
 from verifix.verification.orchestrator import VerificationOrchestrator
 from verifix.verification.registry import VerifierRegistry
+from verifix.verification.verifiers.security import SecurityVerifier
+from verifix.verification.verifiers.static_analysis import StaticAnalysisVerifier
 from verifix.verification.verifiers.unit_test import UnitTestVerifier
 
 
@@ -33,8 +37,9 @@ def build_parser() -> argparse.ArgumentParser:
     run = sub.add_parser("run", help="Run verify-and-repair on an issue")
     run.add_argument("--repo", required=True)
     run.add_argument("--issue", required=True, help="issue id or path to an issue JSON file")
-    run.add_argument("--agent", choices=["fake", "mini"], default="mini")
+    run.add_argument("--agent", choices=["fake", "groq"], default="groq")
     run.add_argument("--fake-patches", help="directory of *.diff files for --agent fake")
+    run.add_argument("--model", help="override the Groq agent model id")
     run.add_argument("--max-attempts", type=int, default=3)
     run.add_argument("--verifiers", help="comma-separated verifier names (default: all available)")
     run.add_argument("--events", choices=["jsonl", "none"], default="none", help="stream JSONL events on stdout")
@@ -46,23 +51,25 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _build_agent(args: argparse.Namespace) -> CodingAgent:
+def _build_agent(args: argparse.Namespace, config: VerifixConfig) -> CodingAgent:
     if args.agent == "fake":
         return FakeAgent.from_dir(args.fake_patches) if args.fake_patches else FakeAgent([])
-    raise SystemExit("--agent mini is not wired up yet; use --agent fake")
+    model = config.model.agent_model if args.model is None else args.model
+    return GroqAgent(GroqClient(), model)
 
 
 def build_application(args: argparse.Namespace, emitter: EventEmitter) -> VerifixApplication:
     config = VerifixConfig()
     config.retry_budget.max_attempts = args.max_attempts
     registry = VerifierRegistry()
-    registry.register(UnitTestVerifier())
+    for verifier in (UnitTestVerifier(), StaticAnalysisVerifier(), SecurityVerifier()):
+        registry.register(verifier)
     enabled = args.verifiers.split(",") if args.verifiers else registry.names()
     config.verification.enabled_verifiers = enabled
 
     store = EvidenceStore()
     sandbox = LocalSandbox()
-    agent_orchestrator = AgentOrchestrator(_build_agent(args))
+    agent_orchestrator = AgentOrchestrator(_build_agent(args, config))
     tracker = BudgetTracker(config.retry_budget, config.cost_budget)
     return VerifixApplication(
         config=config,
@@ -87,7 +94,11 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "run":
         emitter = EventEmitter(sys.stdout if args.events == "jsonl" else None)
-        report = build_application(args, emitter).run(repo=args.repo, issue_id=args.issue)
+        try:
+            report = build_application(args, emitter).run(repo=args.repo, issue_id=args.issue)
+        except (RuntimeError, FileNotFoundError) as exc:
+            print(f"verifix: {exc}", file=sys.stderr)
+            return 2
         if args.report:
             with open(args.report, "w") as fh:
                 fh.write(JSONReportGenerator().generate(report))

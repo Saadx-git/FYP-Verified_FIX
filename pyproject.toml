@@ -3,7 +3,10 @@ name = "verifix"
 version = "0.1.0"
 description = "Verified Fix: a verification-centered agent harness for autonomous code repair"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "bandit>=1.9.4",
+    "ruff>=0.16.10",
+]
 
 [project.scripts]
 verifix = "verifix.cli.main:main"

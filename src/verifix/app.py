@@ -102,7 +102,7 @@ class VerifixApplication:
             diagnosis = self.diagnoser.diagnose(patch, assessment)
             feedback = self.feedback_generator.generate(diagnosis)
             repair = self.repair_selector.select(diagnosis, state)
-            strategy_hint = {"strategy": repair.strategy_type.value, **repair.parameters}
+            strategy_hint = {"strategy": repair.strategy_type.value, "previous_diff": patch.diff, **repair.parameters}
             emit("diagnosis", attempt=attempt, category=diagnosis.category.value,
                  summary=feedback.summary, details=feedback.details, strategy=repair.strategy_type.value)
 
