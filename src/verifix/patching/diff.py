@@ -17,3 +17,11 @@ def parse_changed_files(diff: str) -> list[ChangedFile]:
                 ChangeType.DELETED if "\ndeleted file mode" in chunk else ChangeType.MODIFIED)
         files.append(ChangedFile(path=m.group(2), change_type=kind, diff=chunk))
     return files
+
+
+def new_file_diff(path: str, content: str) -> str:
+    """A git diff that creates `path` with `content` (so generated tests can ride along in a sandbox run)."""
+    lines = content.splitlines()
+    body = "".join(f"+{ln}\n" for ln in lines)
+    return (f"diff --git a/{path} b/{path}\nnew file mode 100644\n--- /dev/null\n+++ b/{path}\n"
+            f"@@ -0,0 +1,{len(lines)} @@\n{body}")

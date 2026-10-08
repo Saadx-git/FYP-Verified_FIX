@@ -5,7 +5,7 @@ from verifix.models.patch import CandidatePatch
 from verifix.models.strategy import VerificationStrategy
 
 # cheapest/fastest signal first so expensive verifiers can be skipped once a cheap one fails
-_ORDER = ["unit_tests", "static_analysis", "security", "integration_tests", "requirement", "llm_review", "mutation"]
+_ORDER = ["unit_tests", "static_analysis", "security", "reproduction", "integration_tests", "requirement", "llm_review", "mutation"]
 _LOW_TOKENS = 5000
 _LLM_ONLY = {"llm_review"}
 

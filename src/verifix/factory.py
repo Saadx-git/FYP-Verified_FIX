@@ -23,12 +23,13 @@ from verifix.verification.orchestrator import VerificationOrchestrator
 from verifix.verification.registry import VerifierRegistry
 from verifix.verification.verifiers.integration_test import IntegrationTestVerifier
 from verifix.verification.verifiers.llm_review import LLMReviewVerifier
+from verifix.verification.verifiers.reproduction import ReproductionVerifier
 from verifix.verification.verifiers.requirement import RequirementVerifier
 from verifix.verification.verifiers.security import SecurityVerifier
 from verifix.verification.verifiers.static_analysis import StaticAnalysisVerifier
 from verifix.verification.verifiers.unit_test import UnitTestVerifier
 
-ALL_VERIFIERS = ["unit_tests", "static_analysis", "security", "integration_tests", "requirement", "llm_review"]
+ALL_VERIFIERS = ["unit_tests", "static_analysis", "security", "reproduction", "integration_tests", "requirement", "llm_review"]
 
 
 @dataclass
@@ -55,6 +56,7 @@ def build_application(agent: CodingAgent, options: HarnessOptions, emitter: Even
 
     registry = VerifierRegistry()
     candidates = [UnitTestVerifier(), StaticAnalysisVerifier(), SecurityVerifier(), IntegrationTestVerifier(),
+                  ReproductionVerifier(client, config.model.agent_model),
                   RequirementVerifier(client, config.model.reviewer_model),
                   LLMReviewVerifier(client, config.model.reviewer_model)]
     for verifier in candidates:

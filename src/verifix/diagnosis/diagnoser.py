@@ -20,6 +20,8 @@ class FailureDiagnoser:
         text = " ".join(msgs).lower()
         if first.verifier_name == "security":
             cat = FailureCategory.SECURITY_VIOLATION
+        elif first.verifier_name == "reproduction":
+            cat = FailureCategory.ORIGINAL_BUG_UNRESOLVED
         elif first.verifier_name == "requirement":
             cat = FailureCategory.REQUIREMENT_MISMATCH
         elif "patch failed to apply" in text or "timed out" in text or "no tests collected" in text:
