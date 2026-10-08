@@ -9,7 +9,22 @@
         "${workspaceFolder}/tests/fixtures/discount",
         "--extensionDevelopmentPath=${workspaceFolder}/extension"
       ],
-      "outFiles": ["${workspaceFolder}/extension/out/**/*.js"],
+      "outFiles": [
+        "${workspaceFolder}/extension/out/**/*.js"
+      ],
+      "preLaunchTask": "verifix: build extension"
+    },
+    {
+      "name": "Verifix Extension (clamp fixture, live Groq agent)",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "${workspaceFolder}/tests/fixtures/clamp",
+        "--extensionDevelopmentPath=${workspaceFolder}/extension"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/extension/out/**/*.js"
+      ],
       "preLaunchTask": "verifix: build extension"
     }
   ]
