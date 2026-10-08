@@ -50,10 +50,12 @@ class GroqClient:
 
     def chat(self, model: str, messages: list[dict], *, tools: list[dict] | None = None,
              temperature: float = 0.0, max_tokens: int = 2048, json_mode: bool = False,
-             use_cache: bool = True) -> LLMResponse:
+             use_cache: bool = True, reasoning_effort: str | None = None) -> LLMResponse:
         body: dict = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}
         if tools:
             body["tools"] = tools
+        if reasoning_effort:
+            body["reasoning_effort"] = reasoning_effort
         if json_mode:
             body["response_format"] = {"type": "json_object"}
         cache_file = self._cache_file(body) if use_cache and temperature == 0 else None
@@ -91,7 +93,8 @@ class GroqClient:
     def _http(self, body: dict) -> dict:
         req = urllib.request.Request(
             GROQ_URL, data=json.dumps(body).encode(),
-            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
+            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json",
+                     "User-Agent": "verifix/0.1 (+https://github.com/Saadx-git)"},
         )
         with urllib.request.urlopen(req, timeout=120) as r:
             return json.loads(r.read())

@@ -52,10 +52,11 @@ class GroqAgent(CodingAgent):
             messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": self._prompt(request)}]
             tokens, summary, confidence = 0, "", 0.5
             for _ in range(self.max_steps):
-                resp = self.client.chat(self.model, messages, tools=TOOLS, max_tokens=1500)
+                resp = self.client.chat(self.model, messages, tools=TOOLS, max_tokens=4096, reasoning_effort="low")
                 tokens += resp.tokens
                 messages.append(resp.message or {"role": "assistant", "content": resp.text})
                 if not resp.tool_calls:
+                    summary = summary or resp.text.strip()[:300]
                     break
                 done = False
                 for call in resp.tool_calls:

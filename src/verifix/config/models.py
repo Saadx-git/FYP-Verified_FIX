@@ -8,9 +8,9 @@ class ModelConfig:
     """Which LLM(s) to use for each role."""
 
     # Groq model ids; override via config/CLI if Groq renames or retires one
-    agent_model: str = "llama-3.3-70b-versatile"
-    reviewer_model: str = "llama-3.1-8b-instant"
-    diagnosis_model: str = "llama-3.1-8b-instant"
+    agent_model: str = "openai/gpt-oss-120b"
+    reviewer_model: str = "openai/gpt-oss-20b"
+    diagnosis_model: str = "openai/gpt-oss-20b"
     provider: str = "groq"
 
 
