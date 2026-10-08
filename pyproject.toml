@@ -1,0 +1,27 @@
+[project]
+name = "verifix"
+version = "0.1.0"
+description = "Verified Fix: a verification-centered agent harness for autonomous code repair"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+verifix = "verifix.cli.main:main"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/verifix"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--ignore=tests/fixtures"
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
