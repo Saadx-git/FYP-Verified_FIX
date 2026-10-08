@@ -1,0 +1,48 @@
+name: Verifix verification gate
+description: Independently verify an AI-generated pull request (tests, static analysis, security, reproduction test, requirement check, LLM review). Fails the check unless the patch is VERIFIED.
+inputs:
+  groq-api-key:
+    description: Groq API key (store as a repository secret)
+    required: true
+  verifiers:
+    description: Comma-separated verifiers to run
+    default: unit_tests,static_analysis,security,reproduction,requirement,llm_review
+  sandbox:
+    description: local or container
+    default: local
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@v5
+    - name: Collect the PR diff and description
+      shell: bash
+      env:
+        BASE: ${{ github.base_ref }}
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        PR_BODY: ${{ github.event.pull_request.body }}
+      run: |
+        git fetch --no-tags --depth=200 origin "$BASE"
+        git diff "origin/$BASE...HEAD" > "$RUNNER_TEMP/pr.diff"
+        printf '%s\n\n%s\n' "$PR_TITLE" "$PR_BODY" > "$RUNNER_TEMP/pr-description.txt"
+    - name: Verify
+      shell: bash
+      env:
+        GROQ_API_KEY: ${{ inputs.groq-api-key }}
+      run: |
+        set +e
+        # verify the PR's *base* tree with the PR diff applied in the sandbox, so the diff is judged independently
+        git worktree add "$RUNNER_TEMP/base" "origin/${{ github.base_ref }}" --detach
+        uv run --project "${{ github.action_path }}/../../.." verifix verify \
+          --repo "$RUNNER_TEMP/base" --patch "$RUNNER_TEMP/pr.diff" \
+          --description-file "$RUNNER_TEMP/pr-description.txt" \
+          --verifiers "${{ inputs.verifiers }}" --sandbox "${{ inputs.sandbox }}" \
+          --report "$RUNNER_TEMP/verifix-report.json" 2> "$RUNNER_TEMP/summary.txt"
+        status=$?
+        { echo '## Verifix verification'; echo '```'; cat "$RUNNER_TEMP/summary.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+        exit $status
+    - name: Upload report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: verifix-report
+        path: ${{ runner.temp }}/verifix-report.*
