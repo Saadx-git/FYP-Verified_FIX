@@ -27,3 +27,4 @@ pre.diff div { padding: 0 8px; white-space: pre; }
 .stats div { display: flex; justify-content: space-between; padding: 2px 0; }
 .log { font-family: var(--vscode-editor-font-family); font-size: 10px; color: var(--vscode-descriptionForeground); white-space: pre-wrap; max-height: 90px; overflow: auto; }
 .err { color: var(--vscode-errorForeground); white-space: pre-wrap; margin-top: 10px; }
+textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; padding: 6px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border, #3c3c3c); }

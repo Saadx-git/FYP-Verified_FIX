@@ -56,22 +56,32 @@ class SidebarProvider implements vscode.WebviewViewProvider {
     return undefined;
   }
 
-  private onMessage(m: { type: string; issueId?: string }): void {
+  private onMessage(m: { type: string; issueId?: string; text?: string }): void {
     if (m.type === "ready") { this.refreshIssues(); }
-    else if (m.type === "run" && m.issueId) { this.run(m.issueId); }
+    else if (m.type === "run" && (m.issueId || m.text)) { this.run(m.issueId ?? "", m.text ?? ""); }
     else if (m.type === "cancel") { this.proc?.kill(); }
     else if (m.type === "apply") { this.applyPatch(); }
     else if (m.type === "report") { this.openReport(); }
   }
 
-  run(issueId: string): void {
+  run(issueId: string, text = ""): void {
     const ws = this.workspace();
     if (!ws) { vscode.window.showErrorMessage("Verifix: open a folder first."); return; }
     const cfg = vscode.workspace.getConfiguration("verifix");
     const [cmd, ...base] = cfg.get<string[]>("command") ?? ["uv", "run", "verifix"];
-    this.reportPath = path.join(ws, ".verifix", "runs", `${issueId}.json`);
+    this.reportPath = path.join(ws, ".verifix", "runs", `${issueId || "latest"}.json`);
     fs.mkdirSync(path.dirname(this.reportPath), { recursive: true });
-    const args = [...base, "run", "--repo", ws, "--issue", issueId, "--events", "jsonl",
+    const github = /^(https?:\/\/)?(www\.)?github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+|^#?\d+$/;
+    const issueArgs: string[] = [];
+    let tmpDescription = "";
+    if (issueId) { issueArgs.push("--issue", issueId); }
+    else if (github.test(text.trim())) { issueArgs.push("--issue", text.trim()); }
+    else {
+      tmpDescription = path.join(os.tmpdir(), `verifix-issue-${Date.now()}.txt`);
+      fs.writeFileSync(tmpDescription, text);
+      issueArgs.push("--description-file", tmpDescription);
+    }
+    const args = [...base, "run", "--repo", ws, ...issueArgs, "--events", "jsonl",
       "--report", this.reportPath, "--agent", cfg.get<string>("agent") ?? "groq",
       "--max-attempts", String(cfg.get<number>("maxAttempts") ?? 3)];
     const fake = cfg.get<string>("fakePatches");
@@ -96,6 +106,7 @@ class SidebarProvider implements vscode.WebviewViewProvider {
     proc.stderr.on("data", (c: Buffer) => { stderr += c.toString(); this.post({ type: "log", text: c.toString() }); });
     proc.on("error", (e) => this.post({ type: "error", message: `Could not start "${cmd}": ${e.message}` }));
     proc.on("close", (code, signal) => {
+      if (tmpDescription) { fs.rmSync(tmpDescription, { force: true }); }
       if (proc !== this.proc) { return; }
       if (signal) { this.post({ type: "cancelled" }); }
       else if (code === 2 || (code !== 0 && code !== 1)) {

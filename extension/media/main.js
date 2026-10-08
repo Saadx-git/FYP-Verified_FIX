@@ -2,9 +2,11 @@
   const vscode = acquireVsCodeApi();
   const app = document.getElementById("app");
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const fresh = () => ({ phase: "idle", attempt: 0, max: 0, diff: "", verifiers: [], track: [], logs: "", error: "", final: null, applied: false });
+  const fresh = () => ({ phase: "idle", status: "", attempt: 0, max: 0, diff: "", verifiers: [], track: [], logs: "", error: "", final: null, applied: false });
   let issues = [];
   let selected = "";
+  let draft = "";
+  const NEW = "__new__";
   let s = fresh();
 
   const renderDiff = (d) => `<pre class="diff">${d.split("\n").filter((l) => !/^(diff --git|index |--- |\+\+\+ )/.test(l)).map((l) => {
@@ -17,19 +19,25 @@
   }
 
   function render() {
+    const isNew = selected === NEW;
     const issue = issues.find((i) => i.id === selected);
     const running = s.phase === "running";
     let h = `<h4>Active GitHub issue</h4><select id="issue" ${running ? "disabled" : ""}>` +
-      (issues.length ? issues.map((i) => `<option value="${esc(i.id)}" ${i.id === selected ? "selected" : ""}>#${esc(i.id)} — ${esc(i.title)}</option>`).join("")
-        : "<option>No issues in .verifix/issues/</option>") + "</select>";
-    h += `<h4>Target file</h4><div class="field">${esc(issue?.targetFile || "—")}</div>`;
+      issues.map((i) => `<option value="${esc(i.id)}" ${i.id === selected ? "selected" : ""}>#${esc(i.id)} — ${esc(i.title)}</option>`).join("") +
+      `<option value="${NEW}" ${isNew ? "selected" : ""}>＋ New issue…</option></select>`;
+    if (isNew && !running) {
+      h += `<h4>Describe the bug, or paste a GitHub issue link / #number</h4>
+        <textarea id="draft" rows="5" placeholder="e.g. apply_discount returns the discount instead of the discounted price">${esc(draft)}</textarea>`;
+    }
+    h += `<h4>Target file</h4><div class="field">${esc(isNew ? "auto-detected from the description" : issue?.targetFile || "—")}</div>`;
+    const canRun = isNew ? draft.trim().length > 0 : !!issue;
 
     if (s.phase === "idle") {
-      h += `<div class="row"><button id="run" ${issue ? "" : "disabled"}>Run Verifix</button></div>
+      h += `<div class="row"><button id="run" ${canRun ? "" : "disabled"}>Run Verifix</button></div>
         <div class="empty"><div class="shield">🛡</div>Select an issue and run Verifix to generate an evidence-verified patch.</div>`;
     } else {
       if (running) {
-        h += `<div class="card active"><span class="ico spin">◌</span><div>${s.attempt ? `Generating patch — attempt ${s.attempt} of ${s.max}` : "Starting…"}</div></div>`;
+        h += `<div class="card active"><span class="ico spin">◌</span><div>${s.attempt ? `Generating patch — attempt ${s.attempt} of ${s.max}` : esc(s.status || "Starting…")}</div></div>`;
       }
       if (s.diff) { h += `<h4>Synthesized diff (candidate #${s.attempt})</h4>` + renderDiff(s.diff); }
       if (s.verifiers.length) {
@@ -60,7 +68,9 @@
     const on = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
     const sel = document.getElementById("issue");
     if (sel) sel.onchange = () => { selected = sel.value; render(); };
-    on("run", () => vscode.postMessage({ type: "run", issueId: selected }));
+    const ta = document.getElementById("draft");
+    if (ta) ta.oninput = () => { draft = ta.value; const b = document.getElementById("run"); if (b) b.disabled = !draft.trim(); };
+    on("run", () => vscode.postMessage(selected === NEW ? { type: "run", text: draft } : { type: "run", issueId: selected }));
     on("cancel", () => vscode.postMessage({ type: "cancel" }));
     on("apply", () => vscode.postMessage({ type: "apply" }));
     on("report", () => vscode.postMessage({ type: "report" }));
@@ -69,6 +79,10 @@
   function onEvent(ev) {
     const d = ev.data;
     switch (ev.type) {
+      case "understanding_issue": s.status = d.source === "github" ? "Fetching and understanding the GitHub issue…" : "Understanding the issue…"; break;
+      case "issue_loaded":
+        if (!issues.find((i) => i.id === d.issue_id)) issues.unshift({ id: d.issue_id, title: d.title, targetFile: d.target_file });
+        selected = d.issue_id; draft = ""; break;
       case "run_started": s.max = d.max_attempts; break;
       case "attempt_started": s.attempt = d.attempt; s.max = d.max_attempts; s.verifiers = []; s.diff = ""; break;
       case "patch_generated": s.diff = d.diff; break;
@@ -100,7 +114,7 @@
 
   window.addEventListener("message", (e) => {
     const m = e.data;
-    if (m.type === "issues") { issues = m.issues; if (!issues.find((i) => i.id === selected)) selected = issues[0]?.id ?? ""; render(); }
+    if (m.type === "issues") { issues = m.issues; if (selected !== NEW && !issues.find((i) => i.id === selected)) selected = issues[0]?.id ?? NEW; render(); }
     else if (m.type === "reset") { s = fresh(); s.phase = "running"; render(); }
     else if (m.type === "event") onEvent(m.event);
     else if (m.type === "log") { s.logs += m.text; render(); }
