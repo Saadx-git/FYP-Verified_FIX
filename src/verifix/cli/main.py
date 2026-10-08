@@ -34,7 +34,13 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--report", help="write the JSON report to this path")
 
     sub.add_parser("verify", help="TODO: verify an existing patch")
-    sub.add_parser("evaluate", help="TODO: run a benchmark evaluation")
+    ev = sub.add_parser("evaluate", help="Run baselines / full system / ablations over a dataset")
+    ev.add_argument("--dataset", required=True, help="JSON list of instances")
+    ev.add_argument("--config", default="full", help="comma-separated config names, or 'all' (see evaluation/baseline.py)")
+    ev.add_argument("--agent", choices=["fake", "groq"], default="groq")
+    ev.add_argument("--max-attempts", type=int, default=3)
+    ev.add_argument("--model", help="override the Groq agent model id")
+    ev.add_argument("--out", help="write full results JSON here")
     sub.add_parser("report", help="TODO: render a saved report")
     return parser
 
@@ -69,5 +75,44 @@ def main(argv: list[str] | None = None) -> int:
                 fh.write(JSONReportGenerator().generate(report))
         print(HumanReadableReportGenerator().generate(report), file=sys.stderr)
         return 0 if report.decision and report.decision.decision.value == "verified" else 1
+    if args.command == "evaluate":
+        return _evaluate(args)
     print(f"verifix {args.command}: not implemented yet", file=sys.stderr)
     return 2
+
+
+def _evaluate(args: argparse.Namespace) -> int:
+    import json
+    from dataclasses import asdict
+    from pathlib import Path
+
+    from verifix.evaluation.baseline import configurations, make_experiment
+    from verifix.evaluation.benchmark import BenchmarkRunner
+
+    names = list(configurations()) if args.config == "all" else args.config.split(",")
+    client = GroqClient()
+    config = VerifixConfig()
+
+    def agent_factory(inst: dict) -> CodingAgent:
+        if args.agent == "fake":
+            return FakeAgent.from_dir(str(Path(inst["base"]) / inst["fake_patches"]))
+        return GroqAgent(client, args.model or config.model.agent_model)
+
+    results = []
+    for name in names:
+        try:
+            exp = make_experiment(name, agent_factory, args.max_attempts, client)
+        except KeyError:
+            print(f"unknown config {name!r}; choose from {', '.join(configurations())}", file=sys.stderr)
+            return 2
+        results.append(BenchmarkRunner().run(exp, args.dataset))
+        print(f"finished {name}", file=sys.stderr)
+    cols = {"issue_resolution_rate": "resolved", "patch_correctness": "correct", "false_acceptance_rate": "false_acc",
+            "false_rejection_rate": "false_rej", "regression_rate": "regress", "repair_success_after_feedback": "fb_repair",
+            "repair_efficiency": "attempts", "token_api_usage": "tokens"}
+    print(f"{'config':<12}" + "".join(f"{label:>11}" for label in cols.values()))
+    for r in results:
+        print(f"{r.experiment_name:<12}" + "".join(f"{getattr(r.metrics, c):>11.2f}" for c in cols))
+    if args.out:
+        Path(args.out).write_text(json.dumps([asdict(r) for r in results], indent=2))
+    return 0

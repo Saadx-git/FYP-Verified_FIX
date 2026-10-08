@@ -33,3 +33,10 @@ class RepairStrategySelector:
         else:
             kind = RepairStrategyType.REVISE_PATCH
         return RepairStrategy(kind, {"category": diagnosis.category.value, "repeats": repeats})
+
+
+class FixedRepairSelector(RepairStrategySelector):
+    """Ablation: always revise the current patch, whatever the diagnosis."""
+
+    def select(self, diagnosis: FailureDiagnosis, budget: BudgetState) -> RepairStrategy:
+        return RepairStrategy(RepairStrategyType.REVISE_PATCH, {"category": diagnosis.category.value})

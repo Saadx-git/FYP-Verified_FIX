@@ -1,0 +1,8 @@
+[
+  {"repo": "discount", "issue": "142", "fake_patches": "discount/patches",
+   "pass_to_pass": ["test_zero_rate_unchanged"],
+   "oracle_files": {"tests/test_oracle.py": "from pricing.discount import apply_discount\n\n\ndef test_oracle_large_discount():\n    assert apply_discount(200, 0.1) == 180\n"}},
+  {"repo": "clamp", "issue": "7", "fake_patches": "clamp/patches",
+   "pass_to_pass": ["test_in_range_unchanged"],
+   "oracle_files": {"tests/test_oracle.py": "from mathx.clamp import clamp\n\n\ndef test_oracle_low():\n    assert clamp(-5, 0, 10) == 0\n"}}
+]

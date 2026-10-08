@@ -37,7 +37,7 @@ class UnitTestVerifier(Verifier):
                 [VerificationFinding(msg, "error")], evidence, 0.0, res.duration_seconds,
             )
 
-        outcomes = {m[2]: m[1] for line in res.stdout.splitlines() if (m := _LINE.match(line)) and m[2]}
+        outcomes = parse_outcomes(res.stdout)
         passed = [t for t, o in outcomes.items() if o == "PASSED"]
         failed = [t for t, o in outcomes.items() if o != "PASSED"]
         findings: list[VerificationFinding] = []
@@ -59,6 +59,11 @@ class UnitTestVerifier(Verifier):
             self.name, VerificationStatus.PASS, 1.0,
             [VerificationFinding(f"{len(passed)} passed", "info")], evidence, 0.0, res.duration_seconds,
         )
+
+
+def parse_outcomes(stdout: str) -> dict[str, str]:
+    """Map pytest `-rA` summary lines to {test_id: PASSED|FAILED|ERROR}."""
+    return {m[2]: m[1] for line in stdout.splitlines() if (m := _LINE.match(line))}
 
 
 def _matches(test_id: str, wanted: list[str]) -> bool:

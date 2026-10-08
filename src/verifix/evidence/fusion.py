@@ -23,7 +23,9 @@ _DEFAULT_WEIGHTS = {
 class EvidenceFusionEngine:
     """Interprets collected evidence into an assessment and a decision (rule-based)."""
 
-    def __init__(self, required: set[str] | None = None, weights: dict[str, float] | None = None) -> None:
+    def __init__(self, required: set[str] | None = None, weights: dict[str, float] | None = None,
+                 decide_on: set[str] | None = None) -> None:
+        self.decide_on = decide_on  # restrict the decision to these verifiers (None = use all evidence)
         self.required = required if required is not None else {"unit_tests"}
         self.weights = weights or _DEFAULT_WEIGHTS
 
@@ -38,7 +40,8 @@ class EvidenceFusionEngine:
         return PatchAssessment(patch_id=patch_id, reliability_score=round(score, 3), results=results)
 
     def decide(self, assessment: PatchAssessment) -> VerificationDecision:
-        by_name = {r.verifier_name: r for r in assessment.results}
+        by_name = {r.verifier_name: r for r in assessment.results
+                   if self.decide_on is None or r.verifier_name in self.decide_on}
         failed = [n for n, r in by_name.items() if r.status is VerificationStatus.FAIL]
         if failed:
             return VerificationDecision(

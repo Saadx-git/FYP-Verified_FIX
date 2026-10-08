@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 @dataclass
 class Metrics:
+    n_instances: int = 0
     issue_resolution_rate: float = 0.0
     patch_correctness: float = 0.0
     regression_rate: float = 0.0

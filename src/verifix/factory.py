@@ -16,7 +16,7 @@ from verifix.feedback.generator import FeedbackGenerator
 from verifix.llm.client import GroqClient
 from verifix.patching.generator import PatchGenerator
 from verifix.sandbox.local_sandbox import LocalSandbox
-from verifix.strategy.repair_selector import RepairStrategySelector
+from verifix.strategy.repair_selector import FixedRepairSelector, RepairStrategySelector
 from verifix.strategy.verification_selector import VerificationStrategySelector
 from verifix.verification.orchestrator import VerificationOrchestrator
 from verifix.verification.registry import VerifierRegistry
@@ -38,6 +38,8 @@ class HarnessOptions:
     feedback: str = "targeted"       # "targeted" | "raw"
     adaptive_verification: bool = True
     adaptive_stopping: bool = True
+    adaptive_repair: bool = True
+    fusion: str = "rules"            # "rules" | "tests_only"
     required: set[str] = field(default_factory=lambda: {"unit_tests"})
 
 
@@ -68,10 +70,11 @@ def build_application(agent: CodingAgent, options: HarnessOptions, emitter: Even
         sandbox=LocalSandbox(),
         verification_orchestrator=VerificationOrchestrator(registry, store, emitter, config.verification.fail_fast),
         evidence_store=store,
-        fusion_engine=EvidenceFusionEngine(required=options.required & set(enabled)),
+        fusion_engine=EvidenceFusionEngine(required=options.required & set(enabled),
+                                        decide_on={"unit_tests"} if options.fusion == "tests_only" else None),
         diagnoser=FailureDiagnoser(),
         feedback_generator=FeedbackGenerator(mode=options.feedback),
-        repair_selector=RepairStrategySelector(),
+        repair_selector=RepairStrategySelector() if options.adaptive_repair else FixedRepairSelector(),
         verification_selector=VerificationStrategySelector(enabled, adaptive=options.adaptive_verification),
         stopping_policy=CostAwareStoppingPolicy(
             min_expected_improvement=0.05 if options.adaptive_stopping else 0.0, budget_exhausted=tracker.exhausted),

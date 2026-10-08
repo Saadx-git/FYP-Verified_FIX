@@ -84,7 +84,7 @@ class VerifixApplication:
             self.budget_tracker.record(CostRecord(
                 tokens=patch.metadata.tokens_used + int(sum(r.cost for r in results)),
                 execution_time_seconds=patch.metadata.generation_time_seconds + sum(r.duration_seconds for r in results),
-                verification_cost=0.0,
+                verification_cost=sum(r.cost for r in results),
             ))
             report.assessments.append(assessment)
             report.final_patch, report.attempts = patch, attempt
