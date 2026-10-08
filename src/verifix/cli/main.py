@@ -6,27 +6,13 @@ import sys
 from verifix.agent.base import CodingAgent
 from verifix.agent.fake import FakeAgent
 from verifix.agent.groq_agent import GroqAgent
-from verifix.agent.orchestrator import AgentOrchestrator
 from verifix.app import VerifixApplication
 from verifix.config.models import VerifixConfig
-from verifix.control.retry_budget import BudgetTracker
-from verifix.control.stopping_policy import CostAwareStoppingPolicy
-from verifix.diagnosis.diagnoser import FailureDiagnoser
 from verifix.events.emitter import EventEmitter
-from verifix.evidence.fusion import EvidenceFusionEngine
-from verifix.evidence.store import EvidenceStore
-from verifix.feedback.generator import FeedbackGenerator
+from verifix.factory import ALL_VERIFIERS, HarnessOptions
+from verifix.factory import build_application as build
 from verifix.llm.client import GroqClient
-from verifix.patching.generator import PatchGenerator
 from verifix.reporting.generator import HumanReadableReportGenerator, JSONReportGenerator
-from verifix.sandbox.local_sandbox import LocalSandbox
-from verifix.strategy.repair_selector import RepairStrategySelector
-from verifix.strategy.verification_selector import VerificationStrategySelector
-from verifix.verification.orchestrator import VerificationOrchestrator
-from verifix.verification.registry import VerifierRegistry
-from verifix.verification.verifiers.security import SecurityVerifier
-from verifix.verification.verifiers.static_analysis import StaticAnalysisVerifier
-from verifix.verification.verifiers.unit_test import UnitTestVerifier
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -42,6 +28,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--model", help="override the Groq agent model id")
     run.add_argument("--max-attempts", type=int, default=3)
     run.add_argument("--verifiers", help="comma-separated verifier names (default: all available)")
+    run.add_argument("--feedback", choices=["targeted", "raw"], default="targeted")
+    run.add_argument("--stopping", choices=["adaptive", "fixed"], default="adaptive")
     run.add_argument("--events", choices=["jsonl", "none"], default="none", help="stream JSONL events on stdout")
     run.add_argument("--report", help="write the JSON report to this path")
 
@@ -60,34 +48,11 @@ def _build_agent(args: argparse.Namespace, config: VerifixConfig) -> CodingAgent
 
 def build_application(args: argparse.Namespace, emitter: EventEmitter) -> VerifixApplication:
     config = VerifixConfig()
-    config.retry_budget.max_attempts = args.max_attempts
-    registry = VerifierRegistry()
-    for verifier in (UnitTestVerifier(), StaticAnalysisVerifier(), SecurityVerifier()):
-        registry.register(verifier)
-    enabled = args.verifiers.split(",") if args.verifiers else registry.names()
-    config.verification.enabled_verifiers = enabled
-
-    store = EvidenceStore()
-    sandbox = LocalSandbox()
-    agent_orchestrator = AgentOrchestrator(_build_agent(args, config))
-    tracker = BudgetTracker(config.retry_budget, config.cost_budget)
-    return VerifixApplication(
-        config=config,
-        agent_orchestrator=agent_orchestrator,
-        patch_generator=PatchGenerator(agent_orchestrator),
-        sandbox=sandbox,
-        verification_orchestrator=VerificationOrchestrator(
-            registry, store, emitter, fail_fast=config.verification.fail_fast),
-        evidence_store=store,
-        fusion_engine=EvidenceFusionEngine(required=set(enabled) & {"unit_tests"} or {"unit_tests"}),
-        diagnoser=FailureDiagnoser(),
-        feedback_generator=FeedbackGenerator(),
-        repair_selector=RepairStrategySelector(),
-        verification_selector=VerificationStrategySelector(enabled),
-        stopping_policy=CostAwareStoppingPolicy(budget_exhausted=tracker.exhausted),
-        budget_tracker=tracker,
-        emitter=emitter,
+    options = HarnessOptions(
+        verifiers=args.verifiers.split(",") if args.verifiers else list(ALL_VERIFIERS),
+        max_attempts=args.max_attempts, feedback=args.feedback, adaptive_stopping=args.stopping == "adaptive",
     )
+    return build(_build_agent(args, config), options, emitter, config=config)
 
 
 def main(argv: list[str] | None = None) -> int:

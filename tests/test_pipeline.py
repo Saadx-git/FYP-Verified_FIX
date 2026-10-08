@@ -9,7 +9,7 @@ FIXTURE = Path(__file__).parent / "fixtures" / "discount"
 def _run(tmp_path, patches, capsys, extra=()):
     out = tmp_path / "report.json"
     code = main(["run", "--repo", str(FIXTURE), "--issue", "142", "--agent", "fake",
-                 "--fake-patches", str(patches), "--events", "jsonl", "--report", str(out), *extra])
+                 "--fake-patches", str(patches), "--verifiers", "unit_tests,static_analysis,security", "--events", "jsonl", "--report", str(out), *extra])
     events = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
     return code, events, json.loads(out.read_text())
 

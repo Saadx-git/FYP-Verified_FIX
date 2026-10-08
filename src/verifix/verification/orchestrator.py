@@ -9,6 +9,8 @@ from verifix.models.strategy import VerificationStrategy
 from verifix.verification.base import VerificationContext
 from verifix.verification.registry import VerifierRegistry
 
+EXPENSIVE = {"requirement", "llm_review", "mutation", "integration_tests"}  # token- or time-hungry
+
 
 class VerificationOrchestrator:
     """Runs selected verifiers and records their results."""
@@ -31,9 +33,15 @@ class VerificationOrchestrator:
         strategy: VerificationStrategy,
     ) -> list[VerificationResult]:
         results: list[VerificationResult] = []
+        skip_expensive = strategy.parameters.get("skip_expensive_on_fail", False)
         for name in strategy.verifier_names:
             if name not in self.registry.names():
                 continue
+            if skip_expensive and name in EXPENSIVE and any(r.status is VerificationStatus.FAIL for r in results):
+                self.emitter.emit("verifier_skipped", verifier=name, patch_id=context.patch.patch_id,
+                                  reason="a cheaper verifier already failed")
+                continue
+            context.extra["prior_results"] = list(results)
             self.emitter.emit("verifier_started", verifier=name, patch_id=context.patch.patch_id)
             start = time.monotonic()
             try:

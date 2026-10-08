@@ -9,6 +9,7 @@ class RepairStrategyType(Enum):
     REGENERATE_PATCH = "regenerate_patch"
     REEXPLORE_REPOSITORY = "reexplore_repository"
     FIX_ENVIRONMENT = "fix_environment"
+    ADDRESS_SECURITY = "address_security"
 
 
 @dataclass

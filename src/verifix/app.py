@@ -67,6 +67,7 @@ class VerifixApplication:
         report = VerificationReport(issue_id=issue.issue_id)
         feedback = None
         strategy_hint: dict = {}
+        previous_diff: str | None = None
         while True:
             attempt = self.budget_tracker.state().attempt_count + 1
             emit("attempt_started", attempt=attempt, max_attempts=self.config.retry_budget.max_attempts)
@@ -81,9 +82,9 @@ class VerifixApplication:
             assessment = self.fusion_engine.fuse(patch.patch_id, results)
             decision = self.fusion_engine.decide(assessment)
             self.budget_tracker.record(CostRecord(
-                tokens=patch.metadata.tokens_used,
+                tokens=patch.metadata.tokens_used + int(sum(r.cost for r in results)),
                 execution_time_seconds=patch.metadata.generation_time_seconds + sum(r.duration_seconds for r in results),
-                verification_cost=sum(r.cost for r in results),
+                verification_cost=0.0,
             ))
             report.assessments.append(assessment)
             report.final_patch, report.attempts = patch, attempt
@@ -94,8 +95,12 @@ class VerifixApplication:
 
             state = self.budget_tracker.state()
             state.confidence = assessment.reliability_score
-            if self.stopping_policy.decide(state) is StoppingDecision.STOP:
-                decision = VerificationDecision(DecisionType.REJECT, assessment, f"stopped after {attempt} attempt(s): {decision.rationale}")
+            state.expected_improvement = (1.0 - assessment.reliability_score) * 0.6 ** (attempt - 1)
+            stuck = previous_diff is not None and patch.diff == previous_diff  # agent repeating itself
+            previous_diff = patch.diff
+            if stuck or self.stopping_policy.decide(state) is StoppingDecision.STOP:
+                why = "agent repeated an identical patch" if stuck else "attempt/cost budget or low expected gain"
+                decision = VerificationDecision(DecisionType.REJECT, assessment, f"stopped after {attempt} attempt(s) ({why}): {decision.rationale}")
                 emit("decision", attempt=attempt, decision="reject", score=assessment.reliability_score, rationale=decision.rationale)
                 break
 

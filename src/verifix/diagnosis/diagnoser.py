@@ -15,6 +15,7 @@ class FailureDiagnoser:
             return FailureDiagnosis(FailureCategory.INSUFFICIENT_TEST_COVERAGE, [
                 RootCauseHypothesis("evidence inconclusive; no verifier failed", files, 0.3)])
         first = failing[0]
+        raw = "\n".join(str(e.content) for e in first.evidence) or "; ".join(f.message for f in first.findings)
         msgs = [f.message for f in first.findings]
         text = " ".join(msgs).lower()
         if first.verifier_name == "security":
@@ -30,4 +31,4 @@ class FailureDiagnoser:
         else:
             cat = FailureCategory.INCORRECT_IMPLEMENTATION
         return FailureDiagnosis(cat, [RootCauseHypothesis(
-            f"{first.verifier_name}: " + "; ".join(msgs[:3]), files, 0.6)])
+            f"{first.verifier_name}: " + "; ".join(msgs[:3]), files, 0.6)], raw_evidence=raw)

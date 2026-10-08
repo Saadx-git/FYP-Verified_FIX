@@ -26,6 +26,7 @@ class RootCauseHypothesis:
 class FailureDiagnosis:
     category: FailureCategory = FailureCategory.ORIGINAL_BUG_UNRESOLVED
     hypotheses: list[RootCauseHypothesis] = field(default_factory=list)
+    raw_evidence: str = ""
 
 
 @dataclass

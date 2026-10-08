@@ -17,7 +17,12 @@ _ADVICE = {
 class FeedbackGenerator:
     """Turns a diagnosis into targeted feedback for the agent."""
 
+    def __init__(self, mode: str = "targeted") -> None:
+        self.mode = mode  # "raw" forwards unprocessed verifier output (the RQ3 / ablation-B comparison)
+
     def generate(self, diagnosis: FailureDiagnosis) -> TargetedFeedback:
+        if self.mode == "raw":
+            return TargetedFeedback(summary="Verification failed. Raw output follows.", details=[diagnosis.raw_evidence[-1500:]])
         hyp = diagnosis.hypotheses[0] if diagnosis.hypotheses else None
         return TargetedFeedback(
             summary=_ADVICE[diagnosis.category],

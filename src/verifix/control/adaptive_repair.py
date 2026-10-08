@@ -13,5 +13,4 @@ class AdaptiveRepairController:
         self.selector = selector
 
     def next_strategy(self, diagnosis: FailureDiagnosis, state: BudgetState) -> RepairStrategy:
-        """TODO: Choose the next repair step."""
-        raise NotImplementedError
+        return self.selector.select(diagnosis, state)

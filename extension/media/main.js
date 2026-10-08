@@ -13,7 +13,7 @@
 
   function icon(st) {
     return st === "pass" ? '<span class="ico ok">✓</span>' : st === "fail" ? '<span class="ico fail">✗</span>'
-      : st === "running" ? '<span class="ico spin">◌</span>' : '<span class="ico warn">⚠</span>';
+      : st === "running" ? '<span class="ico spin">◌</span>' : st === "skipped" ? '<span class="ico">–</span>' : '<span class="ico warn">⚠</span>';
   }
 
   function render() {
@@ -73,6 +73,7 @@
       case "attempt_started": s.attempt = d.attempt; s.max = d.max_attempts; s.verifiers = []; s.diff = ""; break;
       case "patch_generated": s.diff = d.diff; break;
       case "verifier_started": s.verifiers.push({ name: d.verifier, status: "running", summary: "" }); break;
+      case "verifier_skipped": s.verifiers.push({ name: d.verifier, status: "skipped", summary: "skipped — " + d.reason }); break;
       case "verifier_finished": {
         const v = s.verifiers.find((x) => x.name === d.verifier && x.status === "running");
         if (v) { v.status = d.status; v.summary = d.summary; }

@@ -13,5 +13,4 @@ class AdaptiveVerificationController:
         self.selector = selector
 
     def next_strategy(self, patch: CandidatePatch, state: BudgetState) -> VerificationStrategy:
-        """TODO: Choose the next verification step."""
-        raise NotImplementedError
+        return self.selector.select(patch, state)
