@@ -27,13 +27,14 @@
         "verifix.agent": { "type": "string", "enum": ["groq", "fake"], "default": "groq", "description": "Coding agent backend." },
         "verifix.fakePatches": { "type": "string", "default": "", "description": "Directory of canned *.diff files (workspace-relative or absolute) for the fake agent." },
         "verifix.sandbox": { "type": "string", "enum": ["local", "container"], "default": "local", "description": "Where generated code runs: 'container' uses rootless podman/docker with no network (slower first run: builds an image)." },
+        "verifix.confirmInterpretation": { "type": "boolean", "default": true, "description": "For typed or GitHub issues, show how Verifix understood the issue and ask for confirmation before running." },
         "verifix.maxAttempts": { "type": "number", "default": 3, "description": "Maximum repair attempts." }
       }
     }
   },
   "scripts": {
     "build": "tsc -p .",
-    "test": "node test/apply_patch.test.js && node test/webview.test.js",
+    "test": "node test/apply_patch.test.js && node test/webview.test.js && node test/understand.test.js",
     "watch": "tsc -p . --watch",
     "package": "npx @vscode/vsce package"
   },

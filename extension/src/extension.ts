@@ -25,7 +25,8 @@ class SidebarProvider implements vscode.WebviewViewProvider {
   post(msg: unknown): void { this.view?.webview.postMessage(msg); }
 
   refreshIssues(): void {
-    this.post({ type: "mode", agent: vscode.workspace.getConfiguration("verifix").get<string>("agent") ?? "groq" });
+    const cfg = vscode.workspace.getConfiguration("verifix");
+    this.post({ type: "mode", agent: cfg.get<string>("agent") ?? "groq", confirm: cfg.get<boolean>("confirmInterpretation") ?? true });
     this.post({ type: "issues", issues: this.findIssues() });
   }
 
@@ -59,40 +60,31 @@ class SidebarProvider implements vscode.WebviewViewProvider {
 
   private onMessage(m: { type: string; issueId?: string; text?: string }): void {
     if (m.type === "ready") { this.refreshIssues(); }
+    else if (m.type === "understand" && m.text) { this.understand(m.text); }
     else if (m.type === "run" && (m.issueId || m.text)) { this.run(m.issueId ?? "", m.text ?? ""); }
     else if (m.type === "cancel") { this.proc?.kill(); }
     else if (m.type === "apply") { void this.applyPatch(); }
     else if (m.type === "report") { this.openReport(); }
   }
 
-  run(issueId: string, text = ""): void {
+  /** Which CLI arguments name the issue: a saved id, a GitHub link / #N, or a temp file holding the typed description. */
+  private issueArgs(issueId: string, text: string): { args: string[]; tmp: string } {
+    const github = /^(https?:\/\/)?(www\.)?github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+|^#?\d+$/;
+    if (issueId) { return { args: ["--issue", issueId], tmp: "" }; }
+    if (github.test(text.trim())) { return { args: ["--issue", text.trim()], tmp: "" }; }
+    const tmp = path.join(os.tmpdir(), `verifix-issue-${Date.now()}.txt`);
+    fs.writeFileSync(tmp, text);
+    return { args: ["--description-file", tmp], tmp };
+  }
+
+  /** Start the CLI, stream its JSONL events to the webview, and report abnormal exits. */
+  private launch(subcommand: string[], extra: string[], tmp: string): void {
     const ws = this.workspace();
     if (!ws) { vscode.window.showErrorMessage("Verifix: open a folder first."); return; }
-    const cfg = vscode.workspace.getConfiguration("verifix");
-    const [cmd, ...base] = cfg.get<string[]>("command") ?? ["uv", "run", "verifix"];
-    this.reportPath = path.join(ws, ".verifix", "runs", `${issueId || "latest"}.json`);
-    fs.mkdirSync(path.dirname(this.reportPath), { recursive: true });
-    const github = /^(https?:\/\/)?(www\.)?github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+|^#?\d+$/;
-    const issueArgs: string[] = [];
-    let tmpDescription = "";
-    if (issueId) { issueArgs.push("--issue", issueId); }
-    else if (github.test(text.trim())) { issueArgs.push("--issue", text.trim()); }
-    else {
-      tmpDescription = path.join(os.tmpdir(), `verifix-issue-${Date.now()}.txt`);
-      fs.writeFileSync(tmpDescription, text);
-      issueArgs.push("--description-file", tmpDescription);
-    }
-    const args = [...base, "run", "--repo", ws, ...issueArgs, "--events", "jsonl",
-      "--report", this.reportPath, "--agent", cfg.get<string>("agent") ?? "groq",
-      "--max-attempts", String(cfg.get<number>("maxAttempts") ?? 3),
-      "--sandbox", cfg.get<string>("sandbox") ?? "local"];
-    const fake = cfg.get<string>("fakePatches");
-    if (fake) { args.push("--fake-patches", path.isAbsolute(fake) ? fake : path.join(ws, fake)); }
-
-    this.finalDiff = "";
+    const [cmd, ...base] = vscode.workspace.getConfiguration("verifix").get<string[]>("command") ?? ["uv", "run", "verifix"];
     this.post({ type: "reset" });
     this.proc?.kill();
-    const proc = spawn(cmd, args, { cwd: this.projectDir() ?? ws });
+    const proc = spawn(cmd, [...base, ...subcommand, "--repo", ws, ...extra], { cwd: this.projectDir() ?? ws });
     this.proc = proc;
     let buf = "";
     proc.stdout.on("data", (chunk: Buffer) => {
@@ -108,13 +100,34 @@ class SidebarProvider implements vscode.WebviewViewProvider {
     proc.stderr.on("data", (c: Buffer) => { stderr += c.toString(); this.post({ type: "log", text: c.toString() }); });
     proc.on("error", (e) => this.post({ type: "error", message: `Could not start "${cmd}": ${e.message}` }));
     proc.on("close", (code, signal) => {
-      if (tmpDescription) { fs.rmSync(tmpDescription, { force: true }); }
+      if (tmp) { fs.rmSync(tmp, { force: true }); }
       if (proc !== this.proc) { return; }
       if (signal) { this.post({ type: "cancelled" }); }
       else if (code === 2 || (code !== 0 && code !== 1)) {
         this.post({ type: "error", message: stderr.trim().split("\n").slice(-3).join("\n") || `verifix exited with code ${code}` });
       }
     });
+  }
+
+  /** Interpret an issue and show the reading for confirmation; nothing is run yet. */
+  understand(text: string): void {
+    const { args, tmp } = this.issueArgs("", text);
+    this.launch(["understand"], args, tmp);
+  }
+
+  run(issueId: string, text = ""): void {
+    const ws = this.workspace();
+    if (!ws) { vscode.window.showErrorMessage("Verifix: open a folder first."); return; }
+    const cfg = vscode.workspace.getConfiguration("verifix");
+    this.reportPath = path.join(ws, ".verifix", "runs", `${issueId || "latest"}.json`);
+    fs.mkdirSync(path.dirname(this.reportPath), { recursive: true });
+    const { args: issueArgs, tmp } = this.issueArgs(issueId, text);
+    const extra = [...issueArgs, "--events", "jsonl", "--report", this.reportPath, "--agent", cfg.get<string>("agent") ?? "groq",
+      "--max-attempts", String(cfg.get<number>("maxAttempts") ?? 3), "--sandbox", cfg.get<string>("sandbox") ?? "local"];
+    const fake = cfg.get<string>("fakePatches");
+    if (fake) { extra.push("--fake-patches", path.isAbsolute(fake) ? fake : path.join(ws, fake)); }
+    this.finalDiff = "";
+    this.launch(["run"], extra, tmp);
   }
 
   private handleLine(line: string): void {

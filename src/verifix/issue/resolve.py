@@ -42,3 +42,17 @@ def resolve_issue(repo: str, *, ref: str | None, description: str | None,
         raise RuntimeError("provide --issue (id, URL or #N) or --description")
     _save(repo, understander.understand(issue_id, text, repo, title=title))
     return issue_id
+
+
+def understand_issue(repo: str, *, ref: str | None, description: str | None,
+                     understander: IssueUnderstander, emitter: EventEmitter, transport=None) -> Issue:
+    """Interpret a report WITHOUT running anything, so the user can check the reading before spending a run on it."""
+    from verifix.issue.loader import load_issue
+
+    issue = load_issue(repo, resolve_issue(repo, ref=ref, description=description, understander=understander,
+                                           emitter=emitter, transport=transport))
+    emitter.emit("issue_understood", issue_id=issue.issue_id, title=issue.title, unclear=issue.unclear,
+                 requirements=[{"id": r.id, "description": r.description, "observed": r.observed_behavior,
+                                "expected": r.expected_behavior} for r in issue.requirements],
+                 acceptance_criteria=issue.acceptance_criteria)
+    return issue

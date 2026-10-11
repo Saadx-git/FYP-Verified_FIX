@@ -13,7 +13,7 @@ from verifix.config.models import VerifixConfig
 from verifix.events.emitter import EventEmitter
 from verifix.factory import ALL_VERIFIERS, HarnessOptions
 from verifix.factory import build_application as build
-from verifix.issue.resolve import resolve_issue
+from verifix.issue.resolve import resolve_issue, understand_issue
 from verifix.issue.understanding import IssueUnderstander
 from verifix.llm.client import GroqClient
 from verifix.reporting.generator import HumanReadableReportGenerator, JSONReportGenerator
@@ -54,6 +54,12 @@ def build_parser() -> argparse.ArgumentParser:
     ver.add_argument("--sandbox", choices=["local", "container"], default="local")
     ver.add_argument("--events", choices=["jsonl", "none"], default="none")
     ver.add_argument("--report")
+    un = sub.add_parser("understand", help="Interpret an issue (text, GitHub link or saved id) and print it as JSONL; runs nothing")
+    un.add_argument("--repo", required=True)
+    un.add_argument("--issue", help="saved issue id, issue JSON path, GitHub issue URL, or #N")
+    un.add_argument("--description", help="plain-English bug description")
+    un.add_argument("--description-file")
+
     ev = sub.add_parser("evaluate", help="Run baselines / full system / ablations over a dataset")
     ev.add_argument("--dataset", required=True, help="JSON list of instances")
     ev.add_argument("--config", default="full", help="comma-separated config names, or 'all' (see evaluation/baseline.py)")
@@ -116,6 +122,16 @@ def main(argv: list[str] | None = None) -> int:
             Path(args.report).with_suffix(".html").write_text(HTMLReportGenerator().generate(report))
         print(HumanReadableReportGenerator().generate(report), file=sys.stderr)
         return 0 if report.decision and report.decision.decision.value == "verified" else 1
+    if args.command == "understand":
+        try:
+            description = Path(args.description_file).read_text() if args.description_file else args.description
+            understand_issue(args.repo, ref=args.issue, description=description,
+                             understander=IssueUnderstander(GroqClient(), VerifixConfig().model.diagnosis_model),
+                             emitter=EventEmitter(sys.stdout))
+        except (RuntimeError, FileNotFoundError) as exc:
+            print(f"verifix: {exc}", file=sys.stderr)
+            return 2
+        return 0
     if args.command == "report":
         if args.list:
             for rid, created, issue, decision, attempts, tokens, score in RunStore(str(Path(args.repo) / ".verifix" / "runs.db")).list():

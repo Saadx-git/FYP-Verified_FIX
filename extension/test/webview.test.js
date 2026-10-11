@@ -80,3 +80,37 @@ el("edit").onclick();
 assert.ok(html().includes('id="draft"') && html().includes("Camp is not restricted to range"), "back to the form, text kept");
 
 console.log("webview tests passed");
+
+// confirm step: typed issue -> interpretation shown -> confirm runs the saved issue, edit goes back with the text kept
+{
+  send({ type: "mode", agent: "groq", confirm: true });
+  send({ type: "issues", issues: [] });
+  el("draft").value = "Camp is not restricted to range"; el("draft").oninput();
+  assert.ok(html().includes("Check &amp; run"), "typed issue gets the check-and-run button");
+  posted.length = 0; el("run").onclick();
+  same(posted[0], { type: "understand", text: "Camp is not restricted to range" }, "typed issue is interpreted first, not run");
+  send({ type: "reset" });
+  ev("understanding_issue", { source: "text" });
+  assert.ok(html().includes("Understanding the issue"));
+  ev("issue_understood", { issue_id: "adhoc-1", title: "Clamp not restricting to range", unclear: "",
+    requirements: [{ id: "R1", description: "clamp below lo", observed: "x", expected: "returns lo" }], acceptance_criteria: ["both bounds clamped"] });
+  assert.ok(html().includes("How Verifix understood your issue") && html().includes("Clamp not restricting to range"), "interpretation shown");
+  assert.ok(html().includes("returns lo") && html().includes("both bounds clamped"), "requirements and criteria shown");
+  assert.ok(!html().includes('id="draft"') && !html().includes("Apply Patch"), "form hidden while reviewing");
+  posted.length = 0; el("confirm").onclick();
+  same(posted[0], { type: "run", issueId: "adhoc-1" }, "confirm runs the interpreted (saved) issue");
+  ev("issue_understood", { issue_id: "adhoc-1", title: "t", unclear: "", requirements: [], acceptance_criteria: [] });
+  el("edit").onclick();
+  assert.ok(html().includes('id="draft"') && html().includes("Camp is not restricted to range"), "edit returns to the form with the text kept");
+  // an unmatched report shows the question instead of a review
+  send({ type: "reset" });
+  ev("issue_understood", { issue_id: "adhoc-2", title: "t", unclear: "Which function do you mean?", requirements: [], acceptance_criteria: [] });
+  assert.ok(html().includes("Need more detail") && !html().includes('id="confirm"'), "unclear report asks, no confirm button");
+  // with confirmation turned off the typed issue runs directly, as before
+  send({ type: "mode", agent: "groq", confirm: false });
+  el("edit").onclick();  // back to the form from the "need more detail" card
+  assert.ok(html().includes("Run Verifix") && !html().includes("Check &amp; run"));
+  posted.length = 0; el("run").onclick();
+  same(posted[0], { type: "run", text: "Camp is not restricted to range" }, "confirmation off: runs directly");
+  console.log("confirm-step tests passed");
+}

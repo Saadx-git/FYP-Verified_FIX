@@ -7,6 +7,7 @@
   let selected = "";
   let draft = "";
   let agent = "groq";
+  let confirm = true;  // typed / GitHub issues are shown for confirmation before running
   const NEW = "__new__";
   let s = fresh();
 
@@ -34,15 +35,22 @@
     h += `<h4>Active GitHub issue</h4><select id="issue" ${running ? "disabled" : ""}>` +
       issues.map((i) => `<option value="${esc(i.id)}" ${i.id === selected ? "selected" : ""}>#${esc(i.id)} — ${esc(i.title)}</option>`).join("") +
       `<option value="${NEW}" ${isNew ? "selected" : ""}>＋ New issue…</option></select>`;
-    if (isNew && !running) {
+    if (isNew && !running && s.phase !== "review") {
       h += `<h4>Describe the bug, or paste a GitHub issue link / #number</h4>
         <textarea id="draft" rows="5" placeholder="e.g. apply_discount returns the discount instead of the discounted price">${esc(draft)}</textarea>`;
     }
     const canRun = isNew ? draft.trim().length > 0 : !!issue;
 
     if (s.phase === "idle") {
-      h += `<div class="row"><button id="run" ${canRun ? "" : "disabled"}>Run Verifix</button></div>
+      h += `<div class="row"><button id="run" ${canRun ? "" : "disabled"}>${isNew && confirm ? "Check &amp; run" : "Run Verifix"}</button></div>
         <div class="empty"><div class="shield">🛡</div>Select an issue and run Verifix to generate an evidence-verified patch.</div>`;
+    } else if (s.phase === "review") {
+      const i = s.interpreted;
+      h += `<h4>How Verifix understood your issue</h4><div class="card"><div><b>${esc(i.title)}</b>
+        <ul>${i.requirements.map((r) => `<li><b>${esc(r.id)}</b> ${esc(r.description)}${r.expected ? `<div class="sub">expected: ${esc(r.expected)}</div>` : ""}</li>`).join("")}</ul>
+        ${i.acceptance_criteria.length ? `<div class="sub">Done when: ${i.acceptance_criteria.map(esc).join(" · ")}</div>` : ""}</div></div>
+        <div class="sub" style="margin-top:6px">If this is not what you meant, edit the description. Verifix verifies the patch against exactly this reading.</div>
+        <div class="row"><button id="confirm">Looks right — Run Verifix</button><button class="secondary" id="edit">Edit description</button></div>`;
     } else {
       if (running) {
         h += `<div class="card active"><span class="ico spin">◌</span><div>${s.attempt ? `Generating patch — attempt ${s.attempt} of ${s.max}` : esc(s.status || "Starting…")}</div></div>`;
@@ -84,7 +92,8 @@
     if (sel) sel.onchange = () => { selected = sel.value; if (s.phase !== "running") s = fresh(); render(); };
     const ta = document.getElementById("draft");
     if (ta) ta.oninput = () => { draft = ta.value; const b = document.getElementById("run"); if (b) b.disabled = !draft.trim(); };
-    on("run", () => vscode.postMessage(selected === NEW ? { type: "run", text: draft } : { type: "run", issueId: selected }));
+    on("run", () => vscode.postMessage(selected === NEW ? { type: confirm ? "understand" : "run", text: draft } : { type: "run", issueId: selected }));
+    on("confirm", () => vscode.postMessage({ type: "run", issueId: s.interpreted.issue_id }));
     on("cancel", () => vscode.postMessage({ type: "cancel" }));
     on("apply", () => vscode.postMessage({ type: "apply" }));
     on("edit", () => { s = fresh(); render(); });  // back to the form with the text still in the box
@@ -99,6 +108,11 @@
         if (!issues.find((i) => i.id === d.issue_id)) issues.unshift({ id: d.issue_id, title: d.title });
         selected = d.issue_id; draft = ""; break;
       case "issue_unclear": s.unclear = d.question; break;
+      case "issue_understood":
+        s.interpreted = d;
+        if (d.unclear) { s.unclear = d.unclear; s.phase = "done"; s.final = { ok: false, decision: "insufficient_evidence", attempts: 0, score: 0 }; }
+        else { s.phase = "review"; }
+        break;
       case "run_started": s.max = d.max_attempts; break;
       case "attempt_started": s.attempt = d.attempt; s.max = d.max_attempts; s.verifiers = []; s.diff = ""; break;
       case "patch_generated": s.diff = d.diff; break;
@@ -130,7 +144,7 @@
 
   window.addEventListener("message", (e) => {
     const m = e.data;
-    if (m.type === "mode") { agent = m.agent; render(); }
+    if (m.type === "mode") { agent = m.agent; confirm = m.confirm !== false; render(); }
     else if (m.type === "issues") { issues = m.issues; if (selected !== NEW && !issues.find((i) => i.id === selected)) selected = issues[0]?.id ?? NEW; render(); }
     else if (m.type === "reset") { s = fresh(); s.phase = "running"; render(); }
     else if (m.type === "event") onEvent(m.event);
