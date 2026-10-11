@@ -61,7 +61,7 @@ class SidebarProvider implements vscode.WebviewViewProvider {
     if (m.type === "ready") { this.refreshIssues(); }
     else if (m.type === "run" && (m.issueId || m.text)) { this.run(m.issueId ?? "", m.text ?? ""); }
     else if (m.type === "cancel") { this.proc?.kill(); }
-    else if (m.type === "apply") { this.applyPatch(); }
+    else if (m.type === "apply") { void this.applyPatch(); }
     else if (m.type === "report") { this.openReport(); }
   }
 
@@ -125,15 +125,30 @@ class SidebarProvider implements vscode.WebviewViewProvider {
     } catch { this.post({ type: "log", text: line + "\n" }); }
   }
 
-  private applyPatch(): void {
+  private async applyPatch(): Promise<void> {
     const ws = this.workspace();
     if (!ws || !this.finalDiff) { return; }
     const tmp = path.join(os.tmpdir(), `verifix-${Date.now()}.diff`);
     fs.writeFileSync(tmp, this.finalDiff);
-    const r = spawnSync("git", ["apply", "--whitespace=nowarn", tmp], { cwd: ws, encoding: "utf8" });
-    fs.unlinkSync(tmp);
-    if (r.status === 0) { vscode.window.showInformationMessage("Verifix: patch applied."); this.post({ type: "applied" }); }
-    else { vscode.window.showErrorMessage(`Verifix: could not apply patch: ${r.stderr}`); }
+    // Treat the open folder as the project root even when it sits inside a bigger git repo: otherwise git silently
+    // skips every path outside its own root yet exits 0 ("applied" with no change).
+    const env = { ...process.env, GIT_CEILING_DIRECTORIES: path.dirname(ws) };
+    const run = (...args: string[]) => spawnSync("git", [...args, tmp], { cwd: ws, encoding: "utf8", env });
+    const r = run("apply", "--whitespace=nowarn");
+    // Confirm it really landed: an applied patch can be reversed cleanly.
+    const landed = r.status === 0 && run("apply", "--check", "-R").status === 0;
+    fs.rmSync(tmp, { force: true });
+    if (!landed) {
+      vscode.window.showErrorMessage(`Verifix: patch was not applied. ${r.stderr || "git reported success but no files changed."}`);
+      return;
+    }
+    const files = [...this.finalDiff.matchAll(/^\+\+\+ b\/(.+)$/gm)].map((m) => m[1]);
+    vscode.window.showInformationMessage(`Verifix: patch applied to ${files.join(", ") || "the workspace"}.`);
+    this.post({ type: "applied" });
+    if (files[0]) {
+      const doc = await vscode.workspace.openTextDocument(path.join(ws, files[0]));
+      await vscode.window.showTextDocument(doc, { preview: false });
+    }
   }
 
   private async openReport(): Promise<void> {

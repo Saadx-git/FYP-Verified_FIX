@@ -33,7 +33,7 @@ Useful flags: `--sandbox container` (rootless podman/docker, no network), `--ver
 
 ## VS Code extension
 ```bash
-cd extension && npm install && npm run build
+cd extension && npm install && npm run build && npm test   # npm test checks Apply Patch against a mocked VS Code API
 ```
 Open this repo in VS Code and press **F5**. The default configs use the **live Groq agent** (`discount` and `clamp` repos, no planned failures).
 A separate, clearly marked **DEMO ONLY** config (`tests/fixtures/demo-retry`) replays canned patches, including a planned bad first attempt, to show the retry flow; the sidebar shows a DEMO MODE banner there. In the Verifix sidebar pick **＋ New issue…**, describe the bug or paste a GitHub link,
