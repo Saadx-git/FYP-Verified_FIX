@@ -61,6 +61,7 @@ See `docs/verifix-pr.example.yml`.
 | `llm/`, `events/` | Groq client (cache, retry, token accounting); JSONL event stream used by the extension |
 
 ## Known limitations
+- Typed issues are interpreted by an LLM against an outline of the repo: typos are mapped to real names, but a vague or unrelated report can be force-fitted onto the closest function. Check the interpreted title shown in the sidebar before trusting the result.
 - Python repositories only. Dependencies of the target repo are not installed automatically (container `install=True` exists but is not exposed yet).
 - LLM verifiers (requirement, review, reproduction) can be wrong either way; the review is advisory by design. Measure false rejection with `evaluate`.
 - Diagnosis is rule-based; semgrep is not implemented; mutation testing is a lightweight opt-in verifier (`--verifiers …,mutation`); the bundled benchmark is a 2-instance toy, not SWE-bench.

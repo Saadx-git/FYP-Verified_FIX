@@ -24,6 +24,11 @@ class FeedbackGenerator:
         if self.mode == "raw":
             return TargetedFeedback(summary="Verification failed. Raw output follows.", details=[diagnosis.raw_evidence[-1500:]])
         hyp = diagnosis.hypotheses[0] if diagnosis.hypotheses else None
+        if hyp and "produced no changes" in hyp.description:
+            return TargetedFeedback(
+                summary="Your last attempt made no edits at all. Search the repository for the code the issue describes "
+                        "(search, find_symbol, list_dir), read it, and change it. If nothing in the repository matches the issue, say so in your summary.",
+                details=[hyp.description], suspected_files=[])
         return TargetedFeedback(
             summary=_ADVICE[diagnosis.category],
             details=[hyp.description] if hyp else [],

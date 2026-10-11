@@ -26,3 +26,4 @@ class Issue:
     fail_to_pass: list[str] = field(default_factory=list)
     pass_to_pass: list[str] = field(default_factory=list)
     test_command: list[str] = field(default_factory=list)
+    unclear: str = ""  # set when the report does not match the repository: the question to ask the user

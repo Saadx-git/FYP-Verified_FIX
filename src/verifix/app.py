@@ -12,7 +12,13 @@ from verifix.evidence.store import EvidenceStore
 from verifix.feedback.generator import FeedbackGenerator
 from verifix.issue.loader import load_issue
 from verifix.models.cost import CostRecord
-from verifix.models.evidence import DecisionType, VerificationDecision, VerificationStatus
+from verifix.models.evidence import (
+    DecisionType,
+    VerificationDecision,
+    VerificationFinding,
+    VerificationResult,
+    VerificationStatus,
+)
 from verifix.patching.generator import PatchGenerator
 from verifix.patching.ranking import PatchRanker
 from verifix.reporting.report import VerificationReport
@@ -62,6 +68,11 @@ class VerifixApplication:
         """Run the verify-and-repair loop until VERIFIED, or the stopping policy gives up."""
         emit = self.emitter.emit
         issue = load_issue(repo, issue_id)
+        if issue.unclear:  # the report does not match this repository: ask, do not burn attempts on a guess
+            emit("issue_unclear", issue_id=issue.issue_id, question=issue.unclear)
+            decision = VerificationDecision(DecisionType.INSUFFICIENT_EVIDENCE, rationale=f"issue unclear: {issue.unclear}")
+            emit("run_finished", decision=decision.decision.value, attempts=0, score=0.0, diff="")
+            return VerificationReport(issue_id=issue.issue_id, decision=decision)
         emit("run_started", repo=repo, issue_id=issue.issue_id, max_attempts=self.config.retry_budget.max_attempts)
         emit("issue_loaded", issue_id=issue.issue_id, title=issue.title)
 
@@ -80,9 +91,19 @@ class VerifixApplication:
 
             context = VerificationContext(issue=issue, patch=patch, repo_path=repo, sandbox=self.sandbox)
             plan = self.verification_selector.select(patch, self.budget_tracker.state())
+            if not patch.diff.strip():  # nothing to verify: fail fast instead of testing the untouched original code
+                results = [VerificationResult("patch", VerificationStatus.FAIL, 1.0,
+                                              [VerificationFinding("the agent produced no changes", "error")])]
+                emit("verifier_started", verifier="patch", patch_id=patch.patch_id)
+                emit("verifier_finished", verifier="patch", patch_id=patch.patch_id, status="fail",
+                     summary=results[0].findings[0].message, findings=[results[0].findings[0].message],
+                     duration=0.0, counts={}, tests=[])
+            else:
+                results = None
             emit("verification_plan", attempt=attempt, verifiers=plan.verifier_names,
                  focus=plan.parameters.get("focus", []), reason=plan.parameters.get("reason", ""))
-            results = self.verification_orchestrator.run(context, plan)
+            if results is None:
+                results = self.verification_orchestrator.run(context, plan)
             assessment = self.fusion_engine.fuse(patch.patch_id, results)
             decision = self.fusion_engine.decide(assessment)
             self.budget_tracker.record(CostRecord(

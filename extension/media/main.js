@@ -2,7 +2,7 @@
   const vscode = acquireVsCodeApi();
   const app = document.getElementById("app");
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const fresh = () => ({ phase: "idle", status: "", attempt: 0, max: 0, diff: "", verifiers: [], track: [], logs: "", error: "", final: null, applied: false });
+  const fresh = () => ({ phase: "idle", unclear: "", status: "", attempt: 0, max: 0, diff: "", verifiers: [], track: [], logs: "", error: "", final: null, applied: false });
   let issues = [];
   let selected = "";
   let draft = "";
@@ -56,11 +56,16 @@
       }
       if (s.final) {
         const f = s.final;
+        if (s.unclear) {
+          h += `<div class="card warn"><span class="ico warn">⚠</span><div><b>Need more detail</b><div class="sub">${esc(s.unclear)}</div></div></div>
+            <div class="row"><button id="edit">Edit description</button></div>`;
+        } else
         h += f.ok
           ? `<div class="card ok"><span class="ico ok">✓</span><div><b>Verified fix synthesized</b><div class="sub">Verified on attempt ${f.attempts}</div></div></div>`
           : `<div class="card fail"><span class="ico fail">✗</span><div><b>${esc(f.decision === "reject" ? "Rejected" : f.decision)}</b><div class="sub">Evidence insufficient after ${f.attempts} attempt(s)</div></div></div>`;
-        h += `<div class="stats"><div><span>Attempts utilized</span><b>${f.attempts} / ${s.max}</b></div><div><span>Reliability score</span><b>${f.score}</b></div></div>`;
-        if (f.ok) {
+        if (!s.unclear) h += `<div class="stats"><div><span>Attempts utilized</span><b>${f.attempts} / ${s.max}</b></div><div><span>Reliability score</span><b>${f.score}</b></div></div>`;
+        if (s.unclear) { /* nothing to apply or retry: the user must rewrite the description */ }
+        else if (f.ok) {
           h += `<div class="row"><button id="apply" ${s.applied ? "disabled" : ""}>${s.applied ? "Patch applied" : "Apply Patch"}</button><button class="secondary" id="report">View Report</button></div><div class="row"><button class="secondary" id="run">Run again</button></div>`;
         } else {
           h += `<div class="row"><button id="run">Retry</button><button class="secondary" id="report">View Report</button></div>`;
@@ -82,6 +87,7 @@
     on("run", () => vscode.postMessage(selected === NEW ? { type: "run", text: draft } : { type: "run", issueId: selected }));
     on("cancel", () => vscode.postMessage({ type: "cancel" }));
     on("apply", () => vscode.postMessage({ type: "apply" }));
+    on("edit", () => { s = fresh(); render(); });  // back to the form with the text still in the box
     on("report", () => vscode.postMessage({ type: "report" }));
   }
 
@@ -92,6 +98,7 @@
       case "issue_loaded":
         if (!issues.find((i) => i.id === d.issue_id)) issues.unshift({ id: d.issue_id, title: d.title });
         selected = d.issue_id; draft = ""; break;
+      case "issue_unclear": s.unclear = d.question; break;
       case "run_started": s.max = d.max_attempts; break;
       case "attempt_started": s.attempt = d.attempt; s.max = d.max_attempts; s.verifiers = []; s.diff = ""; break;
       case "patch_generated": s.diff = d.diff; break;

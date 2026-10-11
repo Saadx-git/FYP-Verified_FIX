@@ -66,4 +66,17 @@ ev("attempt_started", { attempt: 1, max_attempts: 3 });
 el("issue") && (el("issue").value = "7", el("issue").onchange && el("issue").onchange());
 assert.ok(html().includes("Generating patch"), "live run output survives a stray change event");
 
+// an issue that does not match the repo stops with a question and keeps the user's text
+send({ type: "issues", issues: [] });
+el("draft") && (el("draft").value = "Camp is not restricted to range", el("draft").oninput());
+send({ type: "reset" });
+ev("understanding_issue", { source: "text" });
+ev("issue_unclear", { issue_id: "adhoc-1", question: "Which function do you mean?" });
+ev("run_finished", { decision: "insufficient_evidence", attempts: 0, score: 0, diff: "" });
+assert.ok(html().includes("Need more detail") && html().includes("Which function do you mean?"), "question shown");
+assert.ok(!html().includes("Apply Patch") && !html().includes("Retry") && !html().includes("Attempts utilized"), "no verdict card or buttons");
+assert.ok(html().includes('id="edit"'), "offers to edit the description");
+el("edit").onclick();
+assert.ok(html().includes('id="draft"') && html().includes("Camp is not restricted to range"), "back to the form, text kept");
+
 console.log("webview tests passed");

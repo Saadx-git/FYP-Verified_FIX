@@ -94,3 +94,21 @@ class ContextRetriever:
         listing = ", ".join(f for f in files if str(Path(f).parent) in focus_dirs)
         text = f"Directories:\n{tree}" + (f"\n\nFiles in the likely directories: {listing}" if listing else "")
         return text if len(text) <= MAP_LIMIT else text[:MAP_LIMIT] + "\n... (truncated)"
+
+
+def repo_outline(repo_path: str, limit: int = 3000) -> str:
+    """Python files with their top-level function/class names: lets a model use the repo's real names."""
+    lines, size = [], 0
+    for rel in [f for f in RepositoryExplorer().list_files(repo_path) if f.endswith(".py")]:
+        try:
+            body = Path(repo_path, rel).read_text(errors="replace")[:_MAX_FILE_BYTES]
+        except OSError:
+            continue
+        names = re.findall(r"^(?:async\s+)?(?:def|class)\s+(\w+)", body, re.MULTILINE)
+        line = f"{rel}: {', '.join(names[:12])}" if names else rel
+        size += len(line) + 1
+        if size > limit:
+            lines.append("... (outline truncated)")
+            break
+        lines.append(line)
+    return "\n".join(lines)
