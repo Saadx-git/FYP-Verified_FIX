@@ -61,7 +61,7 @@
           : `<div class="card fail"><span class="ico fail">✗</span><div><b>${esc(f.decision === "reject" ? "Rejected" : f.decision)}</b><div class="sub">Evidence insufficient after ${f.attempts} attempt(s)</div></div></div>`;
         h += `<div class="stats"><div><span>Attempts utilized</span><b>${f.attempts} / ${s.max}</b></div><div><span>Reliability score</span><b>${f.score}</b></div></div>`;
         if (f.ok) {
-          h += `<div class="row"><button id="apply" ${s.applied ? "disabled" : ""}>${s.applied ? "Patch applied" : "Apply Patch"}</button><button class="secondary" id="report">View Report</button></div>`;
+          h += `<div class="row"><button id="apply" ${s.applied ? "disabled" : ""}>${s.applied ? "Patch applied" : "Apply Patch"}</button><button class="secondary" id="report">View Report</button></div><div class="row"><button class="secondary" id="run">Run again</button></div>`;
         } else {
           h += `<div class="row"><button id="run">Retry</button><button class="secondary" id="report">View Report</button></div>`;
         }
@@ -75,7 +75,8 @@
     app.innerHTML = h;
     const on = (id, fn) => { const el = document.getElementById(id); if (el) el.onclick = fn; };
     const sel = document.getElementById("issue");
-    if (sel) sel.onchange = () => { selected = sel.value; render(); };
+    // picking another issue after a run clears the previous result (Apply Patch, report, attempts...)
+    if (sel) sel.onchange = () => { selected = sel.value; if (s.phase !== "running") s = fresh(); render(); };
     const ta = document.getElementById("draft");
     if (ta) ta.oninput = () => { draft = ta.value; const b = document.getElementById("run"); if (b) b.disabled = !draft.trim(); };
     on("run", () => vscode.postMessage(selected === NEW ? { type: "run", text: draft } : { type: "run", issueId: selected }));
