@@ -39,6 +39,19 @@ class Evidence:
 
 
 @dataclass
+class TestOutcome:
+    """One test's result in a verifier run (kept so reports can show exactly what ran)."""
+
+    __test__ = False  # not a pytest test class
+
+    test_id: str = ""
+    outcome: str = ""     # passed | failed | error | xfailed | xpassed
+    role: str = ""        # fail_to_pass | pass_to_pass | reproduction | other
+    duration: float | None = None
+    message: str = ""     # failures only
+
+
+@dataclass
 class VerificationResult:
     """Output of one verifier run."""
 
@@ -49,6 +62,7 @@ class VerificationResult:
     evidence: list[Evidence] = field(default_factory=list)
     cost: float = 0.0
     duration_seconds: float = 0.0
+    tests: list[TestOutcome] = field(default_factory=list)
 
 
 @dataclass

@@ -17,6 +17,7 @@ table{border-collapse:collapse;width:100%}td,th{border:1px solid var(--bd);paddi
 .card{border:1px solid var(--bd);border-radius:6px;padding:12px 14px;margin:10px 0;background:var(--card)}
 pre{margin:0;overflow-x:auto;font:12px/1.45 ui-monospace,monospace;border:1px solid var(--bd);border-radius:6px;background:var(--bg)}
 pre div{padding:0 10px;white-space:pre}.add{background:var(--add)}.del{background:var(--del)}.hdr{color:var(--mut)}
+details{margin:8px 0;border:1px solid var(--bd);border-radius:6px;background:var(--bg)}summary{cursor:pointer;padding:6px 10px;font-weight:600}details table{margin:0}details td pre{border:0;white-space:pre-wrap;max-height:180px;overflow:auto}.o-passed,.o-xpassed{color:var(--ok)}.o-failed,.o-error{color:var(--bad);font-weight:600}.o-xfailed{color:var(--warn)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}.grid .card{margin:0}.grid b{display:block;font-size:18px}
 """
 _STATUS = {"pass": "ok", "fail": "bad", "warning": "warn", "uncertain": "warn", "not_run": "mut"}
@@ -37,6 +38,20 @@ def _diff(diff: str) -> str:
             cls = "add" if line.startswith("+") else "del" if line.startswith("-") else "hdr" if line.startswith("@@") else ""
         rows.append(f'<div class="{cls}">{_e(line) or "&nbsp;"}</div>')
     return f"<pre>{''.join(rows)}</pre>" if rows else '<p class="mut">(empty diff)</p>'
+
+
+def _tests(result) -> str:
+    """Collapsible per-test table for one verifier run (failures first, open when something failed)."""
+    if not result.tests:
+        return ""
+    bad = [t for t in result.tests if t.outcome in ("failed", "error")]
+    counts = ", ".join(f"{sum(t.outcome == o for t in result.tests)} {o}" for o in dict.fromkeys(t.outcome for t in result.tests))
+    rows = "".join(
+        f'<tr><td>{_e(t.test_id)}</td><td>{_e(t.role)}</td><td class="o-{_e(t.outcome)}">{_e(t.outcome)}</td>'
+        f"<td>{'' if t.duration is None else f'{t.duration:.3f}s'}</td>"
+        f"<td>{'<pre>' + _e(t.message) + '</pre>' if t.message else ''}</td></tr>" for t in result.tests)
+    return (f"<details{' open' if bad else ''}><summary>{_e(result.verifier_name)} tests: {counts}</summary>"
+            f"<table><tr><th>Test</th><th>Role</th><th>Outcome</th><th>Time</th><th>Details</th></tr>{rows}</table></details>")
 
 
 class HTMLReportGenerator(ReportGenerator):
@@ -63,7 +78,7 @@ class HTMLReportGenerator(ReportGenerator):
                            f"<td>{r.confidence:.2f}</td><td>{findings}</td></tr>")
             out.append("</table>")
         out.append("<h2>Attempt history</h2>")
-        for h in report.history:
+        for i, h in enumerate(report.history):
             lab, c = _DECISION.get(h["decision"], (h["decision"], "mut"))
             diag = h.get("diagnosis")
             out.append(f'<div class="card"><b>Attempt {h["attempt"]}</b> <span class="badge {c}">{lab}</span> '
@@ -71,7 +86,10 @@ class HTMLReportGenerator(ReportGenerator):
             if diag:
                 out.append(f'<p><b>Diagnosis:</b> {_e(diag["category"])} &rarr; strategy <code>{_e(diag["strategy"])}</code><br>'
                            f'<span class="mut">{_e(diag["summary"])}</span></p>')
-            out.append(_diff(h["diff"]) + "</div>")
+            out.append(_diff(h["diff"]))
+            if i < len(report.assessments):
+                out.extend(_tests(r) for r in report.assessments[i].results)
+            out.append("</div>")
         if report.final_patch:
             out.append("<h2>Final patch</h2>" + _diff(report.final_patch.diff))
         out.append("<p class=mut>Evidence-based assessment; a VERIFIED result does not prove absolute correctness.</p></main>")
@@ -84,6 +102,7 @@ def report_from_json(text: str) -> VerificationReport:
     from verifix.models.evidence import (
         DecisionType,
         PatchAssessment,
+        TestOutcome,
         VerificationDecision,
         VerificationFinding,
         VerificationResult,
@@ -95,7 +114,8 @@ def report_from_json(text: str) -> VerificationReport:
 
     def result(r: dict) -> VerificationResult:
         return VerificationResult(r["verifier_name"], VerificationStatus(r["status"]), r["confidence"],
-                                  [VerificationFinding(**f) for f in r["findings"]], [], r["cost"], r["duration_seconds"])
+                                  [VerificationFinding(**f) for f in r["findings"]], [], r["cost"], r["duration_seconds"],
+                                  [TestOutcome(**t) for t in r.get("tests", [])])
 
     def assessment(a: dict) -> PatchAssessment:
         return PatchAssessment(a["patch_id"], a["reliability_score"], [result(r) for r in a["results"]])

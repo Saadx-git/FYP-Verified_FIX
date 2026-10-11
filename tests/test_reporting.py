@@ -22,3 +22,19 @@ def test_report_html_roundtrip_and_cli(tmp_path, capsys):
     assert main(["report", "--input", str(out), "--format", "text"]) == 0
     assert "VERIFIED" in capsys.readouterr().out
     assert json.loads(out.read_text())["history"][0]["diagnosis"]["category"] == "security_violation"
+
+
+def test_html_report_lists_every_test_per_attempt_and_old_reports_still_load(tmp_path, capsys):
+    demo = FIXTURE.parent / "demo-retry"
+    out = tmp_path / "r.json"
+    main(["run", "--repo", str(demo), "--issue", "142", "--agent", "fake", "--fake-patches", str(demo / "patches"),
+          "--verifiers", "unit_tests,security", "--report", str(out)])
+    capsys.readouterr()
+    page = out.with_suffix(".html").read_text()
+    assert page.count("<details") >= 2 and "unit_tests tests: 3 passed" in page
+    assert "test_never_negative" in page and "fail_to_pass" in page and "pass_to_pass" in page
+    raw = json.loads(out.read_text())
+    for a in raw["assessments"]:
+        for r in a["results"]:
+            r.pop("tests", None)  # a report saved before this feature existed
+    assert report_from_json(json.dumps(raw)).attempts == 2

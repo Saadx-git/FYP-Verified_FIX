@@ -15,7 +15,7 @@ from verifix.repository.file_inspector import FileInspector
 from verifix.sandbox.base import ExecutionRequest, ResourceLimits
 from verifix.verification.base import VerificationContext, Verifier
 from verifix.verification.verifiers._llm import ask_json, issue_text
-from verifix.verification.verifiers.unit_test import parse_outcomes
+from verifix.verification.verifiers.unit_test import collect_tests, parse_outcomes, pytest_cmd
 
 TEST_PATH = "tests/test_verifix_repro.py"
 SYSTEM = (
@@ -57,19 +57,20 @@ class ReproductionVerifier(Verifier):
         patched = context.patch.diff.rstrip("\n") + "\n" + test_diff if context.patch.diff.strip() else test_diff
         after = self._run(context, patched)
         outcomes = parse_outcomes(after.stdout)
+        tests, _ = collect_tests(after.stdout, role="reproduction")
         failed = [t for t, o in outcomes.items() if o != "PASSED"]
         evidence = [Evidence(self.name, "pytest_output", after.stdout[-3000:])]
         if outcomes and not failed:
             return VerificationResult(self.name, VerificationStatus.PASS, 0.8,
                                       [VerificationFinding(f"reproduction test passes after the patch ({len(outcomes)} checks)", "info")],
-                                      evidence, tokens, after.duration_seconds)
+                                      evidence, tokens, after.duration_seconds, tests)
         msgs = [f"reproduction test still fails: {t}" for t in failed] or ["reproduction test could not run on the patched code"]
         return VerificationResult(self.name, VerificationStatus.FAIL, 0.8,
-                                  [VerificationFinding(m, "error") for m in msgs], evidence, tokens, after.duration_seconds)
+                                  [VerificationFinding(m, "error") for m in msgs], evidence, tokens, after.duration_seconds, tests)
 
     def _run(self, context: VerificationContext, diff: str):
         return context.sandbox.execute(ExecutionRequest(
-            command=[sys.executable, "-m", "pytest", "-q", "-rA", "-p", "no:cacheprovider", TEST_PATH],
+            command=pytest_cmd([sys.executable, "-m", "pytest", "-q", "-rA", "-p", "no:cacheprovider", TEST_PATH]),
             repo_path=context.repo_path, patch_diff=diff, limits=ResourceLimits(timeout_seconds=120)))
 
     def _generate(self, context: VerificationContext) -> tuple[str, int, str]:

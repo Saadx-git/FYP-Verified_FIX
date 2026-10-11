@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections import Counter
 
 from verifix.events.emitter import EventEmitter
 from verifix.evidence.store import EvidenceStore
@@ -62,6 +63,8 @@ class VerificationOrchestrator:
                 summary=result.findings[0].message if result.findings else "",
                 findings=[f.message for f in result.findings][:20],
                 duration=result.duration_seconds,
+                counts=dict(Counter(t.outcome for t in result.tests)),
+                tests=[{"id": t.test_id, "outcome": t.outcome, "role": t.role, "message": t.message[:300]} for t in result.tests[:100]],
             )
             if self.fail_fast and result.status is VerificationStatus.FAIL:
                 break

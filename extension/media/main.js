@@ -14,6 +14,13 @@
     const c = l.startsWith("+") ? "add" : l.startsWith("-") ? "del" : l.startsWith("@@") ? "hdr" : "";
     return `<div class="${c}">${esc(l) || " "}</div>`; }).join("")}</pre>`;
 
+  const OUT_ICON = { passed: "✓", xpassed: "✓", failed: "✗", error: "✗", xfailed: "–" };
+  const testsHtml = (v) => (v.tests && v.tests.length)
+    ? `<details ${v.tests.some((t) => t.outcome === "failed" || t.outcome === "error") ? "open" : ""}><summary>${esc(v.name)} tests: ${
+      Object.entries(v.counts || {}).map(([k, n]) => `${n} ${esc(k)}`).join(", ")}</summary>${v.tests.map((t) =>
+      `<div class="t o-${esc(t.outcome)}">${OUT_ICON[t.outcome] || "?"} ${esc(t.id.split("::").pop())} <span class="role">${esc(t.role)}</span>${
+        t.message ? `<pre>${esc(t.message)}</pre>` : ""}</div>`).join("")}</details>` : "";
+
   function icon(st) {
     return st === "pass" ? '<span class="ico ok">✓</span>' : st === "fail" ? '<span class="ico fail">✗</span>'
       : st === "running" ? '<span class="ico spin">◌</span>' : st === "skipped" || st === "not_run" ? '<span class="ico">–</span>' : '<span class="ico warn">⚠</span>';
@@ -43,10 +50,10 @@
       }
       if (s.diff) { h += `<h4>Synthesized diff (candidate #${s.attempt})</h4>` + renderDiff(s.diff); }
       if (s.verifiers.length) {
-        h += "<h4>Verification pipeline</h4>" + s.verifiers.map((v) => `<div class="card ${v.status === "fail" ? "fail" : ""}">${icon(v.status)}<div>${esc(v.name)}${v.summary ? ` — ${esc(v.summary)}` : ""}</div></div>`).join("");
+        h += "<h4>Verification pipeline</h4>" + s.verifiers.map((v) => `<div class="card ${v.status === "fail" ? "fail" : ""}">${icon(v.status)}<div>${esc(v.name)}${v.summary ? ` — ${esc(v.summary)}` : ""}${testsHtml(v)}</div></div>`).join("");
       }
       if (s.track.length) {
-        h += "<h4>Attempt track</h4>" + s.track.map((t) => `<div class="card ${t.ok ? "ok" : "warn"}">${icon(t.ok ? "pass" : "fail")}<div class="${t.ok ? "" : "struck"}">Attempt ${t.attempt} — ${esc(t.text)}${t.sub ? `<div class="sub">→ ${esc(t.sub)}</div>` : ""}</div></div>`).join("");
+        h += "<h4>Attempt track</h4>" + s.track.map((t) => `<div class="card ${t.ok ? "ok" : "warn"}">${icon(t.ok ? "pass" : "fail")}<div class="${t.ok ? "" : "struck"}">Attempt ${t.attempt} — ${esc(t.text)}${t.sub ? `<div class="sub">→ ${esc(t.sub)}</div>` : ""}</div></div>${(t.verifiers || []).map(testsHtml).join("")}`).join("");
       }
       if (s.final) {
         const f = s.final;
@@ -92,13 +99,13 @@
       case "verifier_skipped": s.verifiers.push({ name: d.verifier, status: "skipped", summary: "skipped — " + d.reason }); break;
       case "verifier_finished": {
         const v = s.verifiers.find((x) => x.name === d.verifier && x.status === "running");
-        if (v) { v.status = d.status; v.summary = d.summary; }
+        if (v) { v.status = d.status; v.summary = d.summary; v.tests = d.tests || []; v.counts = d.counts || {}; }
         break;
       }
       case "decision":
         if (d.decision !== "verified") {
           const failed = s.verifiers.filter((v) => v.status === "fail").map((v) => v.name).join(", ");
-          s.track.push({ attempt: d.attempt, ok: false, text: `Rejected${failed ? " by " + failed : ""}`, sub: "" });
+          s.track.push({ attempt: d.attempt, ok: false, text: `Rejected${failed ? " by " + failed : ""}`, sub: "", verifiers: s.verifiers.map((v) => ({ ...v })) });
         }
         break;
       case "diagnosis": {
