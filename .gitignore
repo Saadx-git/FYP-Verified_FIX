@@ -13,3 +13,4 @@ extension/out/
 .env
 **/.verifix/cache/
 **/.verifix/runs.db
+data/
