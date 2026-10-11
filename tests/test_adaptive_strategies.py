@@ -56,7 +56,7 @@ def test_regenerate_starts_clean_and_does_not_show_the_failed_diff(tmp_path):
     agent.generate_patch(_request(repo, "regenerate_patch"))
     prompt = seen[0][1]["content"]
     assert "Discard your earlier approach" in prompt and "ALREADY APPLIED" not in prompt
-    assert "min(x, hi)" not in prompt and "return x" in prompt  # original code, previous diff withheld
+    assert "min(x, hi)" not in prompt and "Repository map" in prompt  # previous diff withheld
 
 
 def test_reexplore_shows_failed_diff_and_dependents(tmp_path):

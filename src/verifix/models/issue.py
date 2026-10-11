@@ -22,7 +22,6 @@ class Issue:
     title: str = ""
     body: str = ""
     requirements: list[IssueRequirement] = field(default_factory=list)
-    target_file: str = ""
     acceptance_criteria: list[str] = field(default_factory=list)
     fail_to_pass: list[str] = field(default_factory=list)
     pass_to_pass: list[str] = field(default_factory=list)

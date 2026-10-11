@@ -38,7 +38,6 @@
       h += `<h4>Describe the bug, or paste a GitHub issue link / #number</h4>
         <textarea id="draft" rows="5" placeholder="e.g. apply_discount returns the discount instead of the discounted price">${esc(draft)}</textarea>`;
     }
-    h += `<h4>Target file</h4><div class="field">${esc(isNew ? "auto-detected from the description" : issue?.targetFile || "—")}</div>`;
     const canRun = isNew ? draft.trim().length > 0 : !!issue;
 
     if (s.phase === "idle") {
@@ -90,7 +89,7 @@
     switch (ev.type) {
       case "understanding_issue": s.status = d.source === "github" ? "Fetching and understanding the GitHub issue…" : "Understanding the issue…"; break;
       case "issue_loaded":
-        if (!issues.find((i) => i.id === d.issue_id)) issues.unshift({ id: d.issue_id, title: d.title, targetFile: d.target_file });
+        if (!issues.find((i) => i.id === d.issue_id)) issues.unshift({ id: d.issue_id, title: d.title });
         selected = d.issue_id; draft = ""; break;
       case "run_started": s.max = d.max_attempts; break;
       case "attempt_started": s.attempt = d.attempt; s.max = d.max_attempts; s.verifiers = []; s.diff = ""; break;

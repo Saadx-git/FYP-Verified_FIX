@@ -4,7 +4,7 @@ import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 
-interface IssueInfo { id: string; title: string; targetFile: string }
+interface IssueInfo { id: string; title: string }
 
 class SidebarProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
@@ -39,7 +39,7 @@ class SidebarProvider implements vscode.WebviewViewProvider {
     return fs.readdirSync(dir).filter((f) => f.endsWith(".json")).flatMap((f) => {
       try {
         const d = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
-        return [{ id: String(d.issue_id ?? f.replace(".json", "")), title: d.title ?? "", targetFile: d.target_file ?? "" }];
+        return [{ id: String(d.issue_id ?? f.replace(".json", "")), title: d.title ?? "" }];
       } catch { return []; }
     });
   }

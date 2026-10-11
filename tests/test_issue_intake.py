@@ -28,15 +28,15 @@ def test_free_text_becomes_cached_structured_issue(tmp_path):
     iid = resolve_issue(str(repo), ref=None, description="clamp never limits values", understander=_understander())
     assert iid.startswith("adhoc-")
     issue = load_issue(str(repo), iid)
-    assert issue.target_file == "mathx/clamp.py" and issue.requirements[0].expected_behavior == "hi"
+    assert issue.requirements[0].expected_behavior == "hi"
     assert resolve_issue(str(repo), ref=iid, description=None, understander=_understander()) == iid  # reuse cached id
 
 
-def test_hallucinated_target_file_is_dropped(tmp_path):
+def test_legacy_target_file_key_in_old_issue_files_is_ignored(tmp_path):
     repo = tmp_path / "r"
-    shutil.copytree(FIXTURE, repo)
-    iid = resolve_issue(str(repo), ref=None, description="bug", understander=_understander({**ANSWER, "target_file": "nope.py"}))
-    assert load_issue(str(repo), iid).target_file == ""
+    (repo / ".verifix" / "issues").mkdir(parents=True)
+    (repo / ".verifix" / "issues" / "9.json").write_text(json.dumps({"issue_id": "9", "title": "t", "target_file": "x.py"}))
+    assert load_issue(str(repo), "9").title == "t"
 
 
 def test_github_url_and_number_parsing_and_fetch():

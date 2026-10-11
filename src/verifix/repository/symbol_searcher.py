@@ -25,10 +25,12 @@ class SymbolSearcher:
                     hits.append(f"{rel}:{node.lineno}: {type(node).__name__.replace('Def', '').lower()} {node.name}")
         return hits
 
-    def grep(self, repo_path: str, pattern: str, limit: int = 20) -> list[str]:
+    def grep(self, repo_path: str, pattern: str, limit: int = 20, prefix: str = "") -> list[str]:
         rx = re.compile(pattern, re.IGNORECASE)
         hits = []
         for rel in RepositoryExplorer().list_files(repo_path):
+            if prefix and not rel.startswith(prefix):
+                continue
             if not rel.endswith((".py", ".md", ".txt", ".toml", ".cfg", ".ini", ".json")):
                 continue
             try:

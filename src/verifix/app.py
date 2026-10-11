@@ -63,7 +63,7 @@ class VerifixApplication:
         emit = self.emitter.emit
         issue = load_issue(repo, issue_id)
         emit("run_started", repo=repo, issue_id=issue.issue_id, max_attempts=self.config.retry_budget.max_attempts)
-        emit("issue_loaded", issue_id=issue.issue_id, title=issue.title, target_file=issue.target_file)
+        emit("issue_loaded", issue_id=issue.issue_id, title=issue.title)
 
         report = VerificationReport(issue_id=issue.issue_id)
         patches: list = []

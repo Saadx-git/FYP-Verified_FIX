@@ -11,6 +11,7 @@ from verifix.models.evidence import (
     VerificationStatus,
 )
 from verifix.patching.diff import new_file_diff
+from verifix.repository.context_retriever import ContextRetriever
 from verifix.repository.file_inspector import FileInspector
 from verifix.sandbox.base import ExecutionRequest, ResourceLimits
 from verifix.verification.base import VerificationContext, Verifier
@@ -97,9 +98,10 @@ class ReproductionVerifier(Verifier):
     @staticmethod
     def _code_context(context: VerificationContext) -> str:
         repo, parts = Path(context.repo_path), []
-        if context.issue.target_file and (repo / context.issue.target_file).is_file():
-            parts.append(f"Current code of {context.issue.target_file}:\n"
-                         + FileInspector().read_file(str(repo / context.issue.target_file), max_lines=150))
+        for rel, line in ContextRetriever().retrieve(context.repo_path, context.issue)["locations"][:2]:
+            start = max(line - 40, 1)
+            parts.append(f"Current code around {rel}:{line}:\n"
+                         + FileInspector().read_file(str(repo / rel), start=start, end=start + 80, max_lines=80))
         tests = sorted((repo / "tests").glob("test_*.py")) if (repo / "tests").is_dir() else []
         if tests:
             parts.append(f"Example of an existing test ({tests[0].relative_to(repo)}), follow its import style:\n"

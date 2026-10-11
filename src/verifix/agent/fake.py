@@ -4,6 +4,7 @@ from pathlib import Path
 
 from verifix.agent.base import AgentRequest, AgentResponse, CodingAgent
 from verifix.models.patch import CandidatePatch, PatchMetadata, RepairPlan
+from verifix.patching.diff import parse_changed_files
 
 
 class FakeAgent(CodingAgent):
@@ -23,7 +24,7 @@ class FakeAgent(CodingAgent):
         diff = self.diffs[min(self.calls, len(self.diffs) - 1)] if self.diffs else ""
         self.calls += 1
         note = f" (feedback: {request.feedback.summary})" if request.feedback else ""
-        plan = RepairPlan(summary=f"canned attempt {self.calls}{note}", target_files=[request.issue.target_file])
+        plan = RepairPlan(summary=f"canned attempt {self.calls}{note}", target_files=[f.path for f in parse_changed_files(diff)])
         return AgentResponse(
             patch=CandidatePatch(diff=diff, plan=plan, metadata=PatchMetadata(agent_name="fake", agent_confidence=0.5)),
             plan=plan, raw_output=diff,

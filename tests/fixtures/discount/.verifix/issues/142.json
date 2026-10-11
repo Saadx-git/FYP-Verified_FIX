@@ -2,12 +2,29 @@
   "issue_id": "142",
   "title": "Discount calculation is wrong",
   "body": "apply_discount returns the discount amount instead of the discounted price, and can go negative.",
-  "target_file": "pricing/discount.py",
-  "acceptance_criteria": ["returns amount minus discount", "never returns a negative price"],
-  "fail_to_pass": ["test_discount_applied", "test_never_negative"],
-  "pass_to_pass": ["test_zero_rate_unchanged"],
+  "acceptance_criteria": [
+    "returns amount minus discount",
+    "never returns a negative price"
+  ],
+  "fail_to_pass": [
+    "test_discount_applied",
+    "test_never_negative"
+  ],
+  "pass_to_pass": [
+    "test_zero_rate_unchanged"
+  ],
   "requirements": [
-    {"id": "R1", "description": "price after discount", "observed_behavior": "returns the discount", "expected_behavior": "returns amount - amount*rate"},
-    {"id": "R2", "description": "non-negative", "observed_behavior": "can be negative", "expected_behavior": "clamped at 0"}
+    {
+      "id": "R1",
+      "description": "price after discount",
+      "observed_behavior": "returns the discount",
+      "expected_behavior": "returns amount - amount*rate"
+    },
+    {
+      "id": "R2",
+      "description": "non-negative",
+      "observed_behavior": "can be negative",
+      "expected_behavior": "clamped at 0"
+    }
   ]
 }
