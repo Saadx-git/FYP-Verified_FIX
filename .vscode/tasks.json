@@ -5,8 +5,46 @@
       "label": "verifix: build extension",
       "type": "shell",
       "command": "npm install --no-audit --no-fund && npm run build",
-      "options": { "cwd": "${workspaceFolder}/extension" },
+      "options": {
+        "cwd": "${workspaceFolder}/extension"
+      },
       "problemMatcher": "$tsc"
+    },
+    {
+      "label": "verifix: fresh discount workspace",
+      "type": "shell",
+      "command": "node extension/scripts/prepare-workspace.js discount",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": [
+        "verifix: build extension"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "verifix: fresh clamp workspace",
+      "type": "shell",
+      "command": "node extension/scripts/prepare-workspace.js clamp",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": [
+        "verifix: build extension"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "verifix: fresh demo-retry workspace",
+      "type": "shell",
+      "command": "node extension/scripts/prepare-workspace.js demo-retry",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": [
+        "verifix: build extension"
+      ],
+      "problemMatcher": []
     }
   ]
 }
