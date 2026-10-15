@@ -25,3 +25,11 @@ def new_file_diff(path: str, content: str) -> str:
     body = "".join(f"+{ln}\n" for ln in lines)
     return (f"diff --git a/{path} b/{path}\nnew file mode 100644\n--- /dev/null\n+++ b/{path}\n"
             f"@@ -0,0 +1,{len(lines)} @@\n{body}")
+
+
+_TEST_PATH = re.compile(r"(^|/)(tests?|testing)/|(^|/)test_[^/]*\.py$|_tests?\.py$|(^|/)conftest\.py$")
+
+
+def is_test_path(path: str) -> bool:
+    """Test files are evidence, not code under repair: an agent must not rewrite them to make a patch look right."""
+    return bool(_TEST_PATH.search(path))

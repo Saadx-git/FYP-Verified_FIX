@@ -5,7 +5,7 @@
   window.addEventListener("error", (e) => vscode.postMessage({ type: "log", message: String(e.message), line: e.lineno }));
   window.addEventListener("unhandledrejection", (e) => vscode.postMessage({ type: "log", message: "unhandled rejection: " + String(e.reason) }));
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const fresh = () => ({ phase: "idle", unclear: "", status: "", attempt: 0, max: 0, diff: "", verifiers: [], track: [], logs: "", error: "", final: null, applied: false });
+  const fresh = () => ({ phase: "idle", unclear: "", status: "", attempt: 0, max: 0, diff: "", verifiers: [], track: [], logs: "", error: "", final: null, applied: false, cur: null });
   let issues = [];
   let selected = "";
   let draft = "";
@@ -29,6 +29,22 @@
     return st === "pass" ? '<span class="ico ok">✓</span>' : st === "fail" ? '<span class="ico fail">✗</span>'
       : st === "running" ? '<span class="ico spin">◌</span>' : st === "skipped" || st === "not_run" ? '<span class="ico">–</span>' : '<span class="ico warn">⚠</span>';
   }
+
+  // one check's result row; failed / warning checks list their findings (open by default)
+  const verifierRow = (v) => `<div class="card ${v.status === "fail" ? "fail" : ""}">${icon(v.status)}<div>${esc(v.name)}${v.summary ? ` — ${esc(v.summary)}` : ""}${
+    v.findings && v.findings.length > 1 && v.status !== "pass" ? `<details ${v.status === "fail" ? "open" : ""}><summary>${v.findings.length} findings</summary>${v.findings.slice(0, 8).map((f) => `<div class="t">${esc(f)}</div>`).join("")}</details>` : ""}${testsHtml(v)}</div></div>`;
+
+  // everything that happened in one attempt: plan, files, patch, checks, why it was rejected, what Verifix did next
+  const attemptHtml = (t, open) => `<details class="attempt" ${open ? "open" : ""}><summary>${icon(t.ok ? "pass" : "fail")} Attempt ${t.attempt} — ${esc(t.text)}${t.score !== undefined ? ` <span class="sub">score ${esc(t.score)}</span>` : ""}</summary>
+    ${t.plan ? `<div class="sub">${esc(t.plan.slice(0, 300))}</div>` : ""}
+    ${t.error ? `<div class="err">Agent error: ${esc(t.error)}</div>` : ""}
+    <div class="sub">${t.files && t.files.length ? "Changed: " + t.files.map(esc).join(", ") : "No files changed"}</div>
+    ${t.diff ? `<details><summary>Patch</summary>${renderDiff(t.diff)}</details>` : ""}
+    ${(t.verifiers || []).map(verifierRow).join("")}
+    ${t.rationale && !t.ok ? `<div class="sub">Why: ${esc(t.rationale)}</div>` : ""}
+    ${t.diag ? `<div class="card warn"><span class="ico warn">↻</span><div><b>${esc(t.diag.category)}</b> → ${esc(t.diag.strategy)}<div class="sub">${esc(t.diag.summary)}</div>${(t.diag.details || []).map((x) => `<div class="sub">${esc(x)}</div>`).join("")}</div></div>` : ""}</details>`;
+
+  const failingChecks = () => { const last = s.track[s.track.length - 1]; return last ? (last.verifiers || []).filter((v) => v.status === "fail").map((v) => `${v.name}: ${v.summary}`) : []; };
 
   function render() {
     const isNew = selected === NEW;
@@ -57,13 +73,11 @@
     } else {
       if (running) {
         h += `<div class="card active"><span class="ico spin">◌</span><div>${s.attempt ? `Generating patch — attempt ${s.attempt} of ${s.max}` : esc(s.status || "Starting…")}</div></div>`;
-      }
-      if (s.diff) { h += `<h4>Synthesized diff (candidate #${s.attempt})</h4>` + renderDiff(s.diff); }
-      if (s.verifiers.length) {
-        h += "<h4>Verification pipeline</h4>" + s.verifiers.map((v) => `<div class="card ${v.status === "fail" ? "fail" : ""}">${icon(v.status)}<div>${esc(v.name)}${v.summary ? ` — ${esc(v.summary)}` : ""}${testsHtml(v)}</div></div>`).join("");
+        if (s.diff) { h += `<h4>Synthesized diff (candidate #${s.attempt})</h4>` + renderDiff(s.diff); }
+        if (s.verifiers.length) { h += "<h4>Verification pipeline</h4>" + s.verifiers.map(verifierRow).join(""); }
       }
       if (s.track.length) {
-        h += "<h4>Attempt track</h4>" + s.track.map((t) => `<div class="card ${t.ok ? "ok" : "warn"}">${icon(t.ok ? "pass" : "fail")}<div class="${t.ok ? "" : "struck"}">Attempt ${t.attempt} — ${esc(t.text)}${t.sub ? `<div class="sub">→ ${esc(t.sub)}</div>` : ""}</div></div>${(t.verifiers || []).map(testsHtml).join("")}`).join("");
+        h += "<h4>Attempt track</h4>" + s.track.map((t, i) => attemptHtml(t, !running && i === s.track.length - 1)).join("");
       }
       if (s.final) {
         const f = s.final;
@@ -73,19 +87,22 @@
         } else
         h += f.ok
           ? `<div class="card ok"><span class="ico ok">✓</span><div><b>Verified fix synthesized</b><div class="sub">Verified on attempt ${f.attempts}</div></div></div>`
-          : `<div class="card fail"><span class="ico fail">✗</span><div><b>${esc(f.decision === "reject" ? "Rejected" : f.decision)}</b><div class="sub">Evidence insufficient after ${f.attempts} attempt(s)</div></div></div>`;
+          : `<div class="card fail"><span class="ico fail">✗</span><div><b>${esc(f.decision === "reject" ? "Rejected" : f.decision)}</b><div class="sub">Not verified after ${f.attempts} attempt(s)</div>${
+            failingChecks().map((w) => `<div class="sub">✗ ${esc(w)}</div>`).join("")}</div></div>`;
         if (!s.unclear) h += `<div class="stats"><div><span>Attempts utilized</span><b>${f.attempts} / ${s.max}</b></div><div><span>Reliability score</span><b>${f.score}</b></div></div>`;
         if (s.unclear) { /* nothing to apply or retry: the user must rewrite the description */ }
         else if (f.ok) {
-          h += `<div class="row"><button id="apply" ${s.applied ? "disabled" : ""}>${s.applied ? "Patch applied" : "Apply Patch"}</button><button class="secondary" id="report">View Report</button></div><div class="row"><button class="secondary" id="run">Run again</button></div>`;
+          h += `<div class="row"><button id="apply" ${s.applied ? "disabled" : ""}>${s.applied ? "Patch applied" : "Apply Patch"}</button><button class="secondary" id="report">View Report</button></div><div class="row"><button class="secondary" id="run">Run again</button><button class="secondary" id="openlog">Open run log</button></div>`;
         } else {
-          h += `<div class="row"><button id="run">Retry</button><button class="secondary" id="report">View Report</button></div>`;
+          h += `<div class="row"><button id="run">Retry</button><button class="secondary" id="report">View Report</button></div>
+            ${f.diff ? `<div class="row"><button class="secondary" id="applyanyway" ${s.applied ? "disabled" : ""}>${s.applied ? "Patch applied (unverified)" : "Apply best patch anyway"}</button></div>` : ""}
+            <div class="row"><button class="secondary" id="openlog">Open run log</button></div>`;
         }
       } else if (running) {
         h += `<div class="row"><button class="secondary" id="cancel">Cancel</button></div>`;
       }
       if (s.error) { h += `<div class="err">${esc(s.error)}</div>`; }
-      if (s.phase === "cancelled" || s.phase === "error") { h += `<div class="row"><button id="run">Run again</button></div>`; }
+      if (s.phase === "cancelled" || s.phase === "error") { h += `<div class="row"><button id="run">Run again</button><button class="secondary" id="openlog">Open run log</button></div>`; }
       if (s.logs) { h += `<h4>Model logs</h4><div class="log">${esc(s.logs.slice(-1500))}</div>`; }
     }
     app.innerHTML = h;
@@ -101,6 +118,8 @@
     on("apply", () => vscode.postMessage({ type: "apply" }));
     on("edit", () => { s = fresh(); render(); });  // back to the form with the text still in the box
     on("report", () => vscode.postMessage({ type: "report" }));
+    on("openlog", () => vscode.postMessage({ type: "openLog" }));
+    on("applyanyway", () => vscode.postMessage({ type: "apply", force: true, detail: failingChecks().join("\n") }));
   }
 
   function onEvent(ev) {
@@ -117,29 +136,33 @@
         else { s.phase = "review"; }
         break;
       case "run_started": s.max = d.max_attempts; break;
-      case "attempt_started": s.attempt = d.attempt; s.max = d.max_attempts; s.verifiers = []; s.diff = ""; break;
-      case "patch_generated": s.diff = d.diff; break;
+      case "attempt_started": s.attempt = d.attempt; s.max = d.max_attempts; s.verifiers = []; s.diff = ""; s.cur = { attempt: d.attempt, plan: "", files: [], diff: "", error: "" }; break;
+      case "patch_generated": s.diff = d.diff; if (s.cur) Object.assign(s.cur, { plan: d.plan, files: d.files, diff: d.diff }); break;
+      case "agent_error": if (s.cur) s.cur.error = d.message; break;
       case "verifier_started": s.verifiers.push({ name: d.verifier, status: "running", summary: "" }); break;
       case "verifier_skipped": s.verifiers.push({ name: d.verifier, status: "skipped", summary: "skipped — " + d.reason }); break;
       case "verifier_finished": {
         const v = s.verifiers.find((x) => x.name === d.verifier && x.status === "running");
-        if (v) { v.status = d.status; v.summary = d.summary; v.tests = d.tests || []; v.counts = d.counts || {}; }
+        if (v) { v.status = d.status; v.summary = d.summary; v.tests = d.tests || []; v.counts = d.counts || {}; v.findings = d.findings || []; }
         break;
       }
-      case "decision":
-        if (d.decision !== "verified") {
-          const failed = s.verifiers.filter((v) => v.status === "fail").map((v) => v.name).join(", ");
-          s.track.push({ attempt: d.attempt, ok: false, text: `Rejected${failed ? " by " + failed : ""}`, sub: "", verifiers: s.verifiers.map((v) => ({ ...v })) });
-        }
+      case "decision": {
+        const ok = d.decision === "verified";
+        const failed = s.verifiers.filter((v) => v.status === "fail").map((v) => v.name).join(", ");
+        const text = ok ? "Verified" : `Rejected${failed ? " by " + failed : ""}`;
+        const last = s.track[s.track.length - 1];
+        if (last && last.attempt === d.attempt) { last.rationale = d.rationale; last.ok = ok; }  // the stopping policy's closing "reject" for the same attempt
+        else s.track.push({ ...s.cur, attempt: d.attempt, ok, text, rationale: d.rationale, score: d.score, sub: "", verifiers: s.verifiers.map((v) => ({ ...v })) });
         break;
+      }
       case "diagnosis": {
         const last = s.track[s.track.length - 1];
-        if (last) last.sub = `feedback sent, executing attempt ${d.attempt + 1}: ${d.summary}`;
+        if (last) { last.sub = `feedback sent, executing attempt ${d.attempt + 1}: ${d.summary}`; last.diag = { category: d.category, strategy: d.strategy, summary: d.summary, details: d.details || [] }; }
         break;
       }
       case "run_finished":
         s.phase = "done";
-        s.final = { ok: d.decision === "verified", decision: d.decision, attempts: d.attempts, score: d.score };
+        s.final = { ok: d.decision === "verified", decision: d.decision, attempts: d.attempts, score: d.score, diff: d.diff || "" };
         break;
     }
     render();

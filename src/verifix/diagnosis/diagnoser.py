@@ -18,7 +18,9 @@ class FailureDiagnoser:
         raw = "\n".join(str(e.content) for e in first.evidence) or "; ".join(f.message for f in first.findings)
         msgs = [f.message for f in first.findings]
         text = " ".join(msgs).lower()
-        if "produced no changes" in text:
+        if "agent error" in text:
+            cat = FailureCategory.TEST_ENVIRONMENT_FAILURE
+        elif "produced no changes" in text:
             cat = FailureCategory.ORIGINAL_BUG_UNRESOLVED
         elif first.verifier_name == "security":
             cat = FailureCategory.SECURITY_VIOLATION

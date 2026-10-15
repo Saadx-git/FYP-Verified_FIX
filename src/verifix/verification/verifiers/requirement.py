@@ -9,7 +9,8 @@ SYSTEM = (
     "You are an independent verifier. Decide whether a code patch satisfies each requirement of a bug report. "
     "Judge only from the issue, the planned intent, the diff and the test outcomes. Be strict but fair: mark a "
     "requirement 'met' only if the diff clearly implements it, 'not_met' only if you can point to a concrete gap, "
-    "otherwise 'unclear'. Respond with JSON: "
+    "otherwise 'unclear'. A test that also fails WITHOUT the patch (a pre-existing failure) says nothing about this patch: never "
+    "mark a requirement not_met because of it; judge only whether the diff implements the requirements. Respond with JSON: "
     '{"requirements":[{"id":str,"status":"met"|"not_met"|"unclear","reason":str}]}'
 )
 

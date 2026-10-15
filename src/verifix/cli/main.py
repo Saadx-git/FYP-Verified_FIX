@@ -70,6 +70,12 @@ def build_parser() -> argparse.ArgumentParser:
     un.add_argument("--description", help="plain-English bug description")
     un.add_argument("--description-file")
 
+    ap = sub.add_parser("apply", help="Apply a run's final patch to the repo (a verified patch freely; an unverified one only with --force)")
+    ap.add_argument("--repo", required=True)
+    ap.add_argument("--input", help="report JSON written by `run --report` (default: the latest run in .verifix/runs.db)")
+    ap.add_argument("--run", type=int, help="apply run N from .verifix/runs.db")
+    ap.add_argument("--force", action="store_true", help="apply even though the run was not VERIFIED (you take responsibility)")
+
     lg = sub.add_parser("logs", help="Inspect run logs: list, show one run, or summarize to find bugs and weak spots")
     lg.add_argument("--repo", default=".", help="repo whose .verifix/logs to read (default: current folder)")
     lg.add_argument("--dir", help="read this log folder instead (e.g. VERIFIX_LOG_DIR)")
@@ -114,7 +120,7 @@ def build_application(args: argparse.Namespace, emitter: EventEmitter) -> Verifi
     return build(_build_agent(args, config), options, emitter, config=config)
 
 
-_LOGGED = {"run", "verify", "understand", "evaluate"}
+_LOGGED = {"run", "verify", "understand", "evaluate", "apply"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -171,6 +177,8 @@ def _dispatch(args: argparse.Namespace) -> int:
         return 0
     if args.command == "logs":
         return _logs(args)
+    if args.command == "apply":
+        return _apply(args)
     if args.command == "report":
         if args.list:
             for rid, created, issue, decision, attempts, tokens, score in RunStore(str(Path(args.repo) / ".verifix" / "runs.db")).list():
@@ -188,6 +196,46 @@ def _dispatch(args: argparse.Namespace) -> int:
         return _evaluate(args)
     print(f"verifix {args.command}: not implemented yet", file=sys.stderr)
     return 2
+
+
+def _apply(args: argparse.Namespace) -> int:
+    import os
+    import subprocess
+
+    store = RunStore(str(Path(args.repo) / ".verifix" / "runs.db"))
+    if args.input:
+        raw = Path(args.input).read_text()
+    else:
+        run_id = args.run or (store.list(1)[0][0] if store.list(1) else None)
+        raw = store.get(run_id) if run_id else None
+    if raw is None:
+        print("verifix: no run found to apply (use --input or --run)", file=sys.stderr)
+        return 2
+    report = report_from_json(raw)
+    diff = report.final_patch.diff if report.final_patch else ""
+    if not diff.strip():
+        print("verifix: this run produced no patch to apply", file=sys.stderr)
+        return 2
+    verified = report.decision is not None and report.decision.decision.value == "verified"
+    if not verified:
+        failing = [f"  - {r.verifier_name}: {r.findings[0].message if r.findings else r.status.value}"
+                   for r in (report.decision.assessment.results if report.decision else []) if r.status.value in ("fail", "warning", "uncertain")]
+        print(f"Run {report.issue_id} was NOT verified ({report.decision.decision.value if report.decision else 'no decision'}):\n"
+              + ("\n".join(failing) or "  (no details)"), file=sys.stderr)
+        if not args.force:
+            print("verifix: refusing to apply an unverified patch; review it, then use --force to apply it anyway", file=sys.stderr)
+            return 1
+        note_error(f"unverified patch applied with --force (run {report.issue_id})")
+    # treat --repo as the project root even when it sits inside a bigger git repo (git would silently skip every path)
+    env = {**os.environ, "GIT_CEILING_DIRECTORIES": str(Path(args.repo).resolve().parent)}
+    run = lambda *a: subprocess.run(["git", *a], input=diff, cwd=args.repo, text=True, capture_output=True, env=env, check=False)
+    applied = run("apply", "--whitespace=nowarn", "-")
+    if applied.returncode != 0 or run("apply", "--check", "-R", "-").returncode != 0:  # an applied patch can be reversed
+        print(f"verifix: patch did not apply: {applied.stderr.strip() or 'no files changed'}", file=sys.stderr)
+        return 2
+    files = [f.path for f in report.final_patch.changed_files] or [ln[6:] for ln in diff.splitlines() if ln.startswith("+++ b/")]
+    print(f"applied to {', '.join(files)}" + ("" if verified else "  (UNVERIFIED, applied with --force)"))
+    return 0
 
 
 def _logs(args: argparse.Namespace) -> int:

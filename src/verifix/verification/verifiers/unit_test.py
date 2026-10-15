@@ -11,6 +11,8 @@ from verifix.models.evidence import (
     VerificationResult,
     VerificationStatus,
 )
+from verifix.models.patch import ChangeType
+from verifix.patching.diff import is_test_path
 from verifix.sandbox.base import ExecutionRequest, ResourceLimits
 from verifix.verification.base import VerificationContext, Verifier
 
@@ -23,9 +25,29 @@ MAX_FAILED, MAX_PASSED, MAX_MESSAGE = 200, 300, 1500
 
 
 class UnitTestVerifier(Verifier):
-    """Runs pytest on the patched repo; target tests must pass, others must not regress."""
+    """Runs pytest on the patched repo.
+
+    Blame is assigned against a baseline run of the unpatched repo: a test that already failed before the patch is a
+    *pre-existing* failure (reported, not held against the patch); a test that passed before and fails now is a regression.
+    """
 
     name = "unit_tests"
+
+    def __init__(self) -> None:
+        self._baselines: dict[tuple[str, str], dict[str, str] | None] = {}
+
+    def _run(self, context: VerificationContext, command: list[str], diff: str):
+        return context.sandbox.execute(ExecutionRequest(
+            command=command, repo_path=context.repo_path, patch_diff=diff, limits=ResourceLimits(timeout_seconds=120)))
+
+    def _baseline(self, context: VerificationContext, command: list[str]) -> dict[str, str] | None:
+        """Outcomes of the same command on the unpatched repo (once per issue); None if it could not be determined."""
+        key = (context.repo_path, context.issue.issue_id)
+        if key not in self._baselines:
+            res = self._run(context, command, "")
+            outcomes = parse_outcomes(res.stdout)
+            self._baselines[key] = None if res.timed_out or not outcomes else outcomes
+        return self._baselines[key]
 
     def verify(self, context: VerificationContext) -> VerificationResult:
         issue = context.issue
@@ -33,12 +55,7 @@ class UnitTestVerifier(Verifier):
         if not issue.test_command and Path(context.repo_path, "tests/integration").is_dir():
             command += ["--ignore=tests/integration"]
         command = pytest_cmd(command)
-        res = context.sandbox.execute(
-            ExecutionRequest(
-                command=command, repo_path=context.repo_path,
-                patch_diff=context.patch.diff, limits=ResourceLimits(timeout_seconds=120),
-            )
-        )
+        res = self._run(context, command, context.patch.diff)
         evidence = [Evidence(source=self.name, kind="pytest_output", content=res.stdout[-4000:])]
         if res.timed_out or "patch failed to apply" in res.stderr:
             msg = "tests timed out" if res.timed_out else res.stderr.strip()
@@ -51,26 +68,43 @@ class UnitTestVerifier(Verifier):
         tests, omitted = collect_tests(res.stdout, issue.fail_to_pass, issue.pass_to_pass)
         passed = [t for t, o in outcomes.items() if o == "PASSED"]
         failed = [t for t, o in outcomes.items() if o != "PASSED"]
+        baseline = self._baseline(context, command) if failed else None
         findings: list[VerificationFinding] = []
+        preexisting: list[str] = []
         for t in failed:
-            kind = "target test still failing" if _matches(t, issue.fail_to_pass) else (
-                "regression" if _matches(t, issue.pass_to_pass) else "test failure"
-            )
-            findings.append(VerificationFinding(f"{kind}: {t}", "error", t))
+            if _matches(t, issue.fail_to_pass):
+                findings.append(VerificationFinding(f"target test still failing: {t}", "error", t))
+            elif baseline is not None and baseline.get(t, "PASSED") != "PASSED":
+                preexisting.append(t)
+                findings.append(VerificationFinding(f"pre-existing failure, also fails without the patch: {t}", "warning", t))
+            elif _matches(t, issue.pass_to_pass) or (baseline is not None and baseline.get(t) == "PASSED"):
+                findings.append(VerificationFinding(f"regression: {t}", "error", t))
+            elif baseline is not None:
+                findings.append(VerificationFinding(f"new test failing: {t}", "error", t))
+            else:
+                findings.append(VerificationFinding(f"test failure: {t}", "error", t))
+        for t in tests:
+            if t.test_id in preexisting:
+                t.role = "preexisting"
         missing = [t for t in issue.fail_to_pass if not _matches_any(t, outcomes)]
         for t in missing:
             findings.append(VerificationFinding(f"target test not run: {t}", "error", t))
         if not outcomes:
             findings.append(VerificationFinding(f"no tests collected (exit {res.exit_code})", "error"))
+        rewritten = [f.path for f in context.patch.changed_files if f.change_type is not ChangeType.ADDED and is_test_path(f.path)]
+        if rewritten:  # a patch that edits existing tests can make itself look right: always surface it
+            findings.append(VerificationFinding(f"the patch modifies existing test files: {', '.join(rewritten)}", "warning"))
         if omitted:
             findings.append(VerificationFinding(f"{omitted} more passed tests not listed", "info"))
         if any(f.severity == "error" for f in findings):
             return VerificationResult(
                 self.name, VerificationStatus.FAIL, 1.0, findings, evidence, 0.0, res.duration_seconds, tests
             )
+        note = f", {len(preexisting)} pre-existing failure(s) not caused by this patch" if preexisting else ""
+        status = VerificationStatus.WARNING if (preexisting or rewritten) else VerificationStatus.PASS
         return VerificationResult(
-            self.name, VerificationStatus.PASS, 1.0,
-            [VerificationFinding(f"{len(passed)} passed", "info"), *findings], evidence, 0.0, res.duration_seconds, tests,
+            self.name, status, 1.0, [VerificationFinding(f"{len(passed)} passed{note}", "info"), *findings],
+            evidence, 0.0, res.duration_seconds, tests,
         )
 
 

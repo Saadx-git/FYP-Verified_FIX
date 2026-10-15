@@ -30,6 +30,20 @@
       "preLaunchTask": "verifix: fresh clamp workspace"
     },
     {
+      "name": "Verifix (live agent) - fibonacci repo (flipped + to -)",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "${workspaceFolder}/.workspaces/fibonacci",
+        "--disable-extensions",
+        "--extensionDevelopmentPath=${workspaceFolder}/extension"
+      ],
+      "outFiles": [
+        "${workspaceFolder}/extension/out/**/*.js"
+      ],
+      "preLaunchTask": "verifix: fresh fibonacci workspace"
+    },
+    {
       "name": "DEMO ONLY - retry flow with planned failure (canned agent)",
       "type": "extensionHost",
       "request": "launch",

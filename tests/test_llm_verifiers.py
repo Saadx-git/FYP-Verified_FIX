@@ -45,3 +45,19 @@ def test_review_is_advisory_and_never_fails():
     assert v({"verdict": "approve", "concerns": []}).status is VerificationStatus.PASS
     assert v({"verdict": "reject", "concerns": ["bad"]}).status is VerificationStatus.WARNING
     assert v({"verdict": "wat"}).status is VerificationStatus.UNCERTAIN
+
+
+def test_requirement_prompt_marks_preexisting_failures_as_not_the_patchs_fault():
+    from verifix.models.evidence import VerificationFinding
+    seen = []
+
+    def transport(body):
+        seen.append(body["messages"])
+        return {"choices": [{"message": {"content": json.dumps({"requirements": [{"id": "R1", "status": "met", "reason": "x"}]})}}], "usage": {}}
+    ctx = _ctx()
+    ctx.extra["prior_results"] = [VerificationResult("unit_tests", VerificationStatus.WARNING, 1.0, [
+        VerificationFinding("5 passed, 1 pre-existing failure(s) not caused by this patch", "info"),
+        VerificationFinding("pre-existing failure, also fails without the patch: tests/test_old.py::test_x", "warning")])]
+    RequirementVerifier(GroqClient(api_key="k", cache_dir=None, transport=transport), "m").verify(ctx)
+    assert "pre-existing" in seen[0][0]["content"] and "never mark a requirement not_met because of it" in seen[0][0]["content"]
+    assert "NOT caused by it" in seen[0][1]["content"]

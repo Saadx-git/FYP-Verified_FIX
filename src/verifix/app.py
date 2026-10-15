@@ -19,6 +19,7 @@ from verifix.models.evidence import (
     VerificationResult,
     VerificationStatus,
 )
+from verifix.models.patch import CandidatePatch
 from verifix.patching.generator import PatchGenerator
 from verifix.patching.ranking import PatchRanker
 from verifix.reporting.report import VerificationReport
@@ -85,7 +86,15 @@ class VerifixApplication:
             attempt = self.budget_tracker.state().attempt_count + 1
             emit("attempt_started", attempt=attempt, max_attempts=self.config.retry_budget.max_attempts)
             request = AgentRequest(issue=issue, repo_path=repo, feedback=feedback, context=strategy_hint)
-            patch = self.patch_generator.generate(request)
+            agent_error = ""
+            try:
+                patch = self.patch_generator.generate(request)
+            except RuntimeError as exc:  # LLM/API failure: keep this attempt and the history instead of crashing the run
+                if "401" in str(exc) or "API key" in str(exc):
+                    raise  # a bad key will not get better on retry: fail loudly and immediately
+                agent_error = str(exc)
+                emit("agent_error", attempt=attempt, message=agent_error)
+                patch = CandidatePatch(patch_id=f"patch-error-{attempt}")
             emit("patch_generated", attempt=attempt, patch_id=patch.patch_id, diff=patch.diff,
                  files=[f.path for f in patch.changed_files], plan=patch.plan.summary)
 
@@ -93,7 +102,7 @@ class VerifixApplication:
             plan = self.verification_selector.select(patch, self.budget_tracker.state())
             if not patch.diff.strip():  # nothing to verify: fail fast instead of testing the untouched original code
                 results = [VerificationResult("patch", VerificationStatus.FAIL, 1.0,
-                                              [VerificationFinding("the agent produced no changes", "error")])]
+                                              [VerificationFinding(f"agent error: {agent_error}" if agent_error else "the agent produced no changes", "error")])]
                 emit("verifier_started", verifier="patch", patch_id=patch.patch_id)
                 emit("verifier_finished", verifier="patch", patch_id=patch.patch_id, status="fail",
                      summary=results[0].findings[0].message, findings=[results[0].findings[0].message],

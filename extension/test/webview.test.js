@@ -83,6 +83,65 @@ assert.ok(html().includes('id="draft"') && html().includes("Camp is not restrict
 posted.length = 0;
 handlers.error({ message: "x is not defined", lineno: 7 });
 same(posted[0], { type: "log", message: "x is not defined", line: 7 }, "UI errors are reported to the host");
+// ---- detail: every attempt is a full record, and a rejected run says why and offers "apply anyway"
+{
+  send({ type: "issues", issues }); send({ type: "reset" });
+  ev("run_started", { max_attempts: 2 });
+  ev("attempt_started", { attempt: 1, max_attempts: 2 });
+  ev("patch_generated", { attempt: 1, plan: "Flip the minus to a plus in the recursion", files: ["fib.py"], diff: "diff --git a/fib.py b/fib.py\n-    return fib(n-1) - fib(n-2)\n+    return fib(n-1) + fib(n-2)\n" });
+  ev("verifier_started", { verifier: "unit_tests" });
+  ev("verifier_finished", { verifier: "unit_tests", status: "fail", summary: "target test still failing: test_fib_3", findings: ["target test still failing: test_fib_3", "regression: test_sequence", "pre-existing failure: test_old"], counts: {}, tests: [] });
+  ev("verifier_started", { verifier: "security" });
+  ev("verifier_finished", { verifier: "security", status: "pass", summary: "no new security findings", findings: ["no new security findings"], counts: {}, tests: [] });
+  ev("decision", { attempt: 1, decision: "repair_required", score: 0.4, rationale: "failed: unit_tests" });
+  ev("diagnosis", { attempt: 1, category: "regression_introduced", strategy: "revise_patch", summary: "Your change broke previously passing behavior.", details: ["unit_tests: regression: test_sequence"] });
+  ev("attempt_started", { attempt: 2, max_attempts: 2 });
+  ev("agent_error", { attempt: 2, message: "Groq API error 429: rate limited" });
+  ev("decision", { attempt: 2, decision: "repair_required", score: 0, rationale: "failed: patch" });
+  ev("decision", { attempt: 2, decision: "reject", score: 0, rationale: "stopped after 2 attempt(s)" });
+  ev("run_finished", { decision: "reject", attempts: 2, score: 0, diff: "diff --git a/fib.py b/fib.py\n+x\n" });
+  const page = html();
+  assert.ok(page.includes("Attempt 1 — Rejected by unit_tests") && page.includes("Attempt 2 — Rejected"), "both attempts listed");
+  assert.ok(page.includes("Flip the minus to a plus") && page.includes("Changed: fib.py"), "the agent's plan and the files it changed");
+  assert.ok(page.includes("<summary>Patch</summary>") && page.includes("fib(n-1) + fib(n-2)"), "the patch of that attempt is viewable");
+  assert.ok(page.includes("3 findings") && page.includes("regression: test_sequence"), "all findings of a failed check are listed");
+  assert.ok(page.includes("regression_introduced") && page.includes("revise_patch") && page.includes("broke previously passing"), "diagnosis, chosen strategy and feedback shown");
+  assert.ok(page.includes("Agent error: Groq API error 429"), "an agent/API error is shown inside its attempt, not lost");
+  assert.strictEqual((page.match(/Attempt 2 —/g) || []).length, 1, "the closing reject does not duplicate the attempt");
+  assert.ok(page.includes("Not verified after 2 attempt(s)"), "final card says it was not verified");
+  assert.ok(page.includes("Apply best patch anyway") && page.includes("Open run log") && page.includes("Retry"), "offers apply-anyway, run log and retry");
+  assert.ok(!page.includes("Apply Patch"), "the normal Apply Patch is reserved for verified runs");
+  posted.length = 0; el("applyanyway").onclick();
+  same(posted[0], { type: "apply", force: true, detail: "" }, "apply-anyway goes to the host with force");
+  posted.length = 0; el("openlog").onclick();
+  same(posted[0], { type: "openLog" }, "open run log");
+  send({ type: "applied" });
+  assert.ok(html().includes("Patch applied (unverified)"), "an unverified apply is labelled as such");
+
+  // the reason lists the failing checks of the final attempt
+  send({ type: "reset" });
+  ev("attempt_started", { attempt: 1, max_attempts: 1 });
+  ev("verifier_started", { verifier: "requirement" });
+  ev("verifier_finished", { verifier: "requirement", status: "fail", summary: "R1 not_met: lower bound missing", findings: ["R1 not_met: lower bound missing"], counts: {}, tests: [] });
+  ev("decision", { attempt: 1, decision: "reject", score: 0.2, rationale: "stopped" });
+  ev("run_finished", { decision: "reject", attempts: 1, score: 0.2, diff: "d" });
+  assert.ok(html().includes("✗ requirement: R1 not_met: lower bound missing"), "the failing check is named on the final card");
+  posted.length = 0; el("applyanyway").onclick();
+  same(posted[0], { type: "apply", force: true, detail: "requirement: R1 not_met: lower bound missing" }, "the host's confirmation dialog gets the reasons");
+
+  // no patch at all (e.g. crashed before one existed): nothing to apply anyway
+  send({ type: "reset" });
+  ev("run_finished", { decision: "reject", attempts: 0, score: 0, diff: "" });
+  assert.ok(!html().includes("Apply best patch anyway"));
+
+  // a verified run keeps the normal button and also offers the log; an error offers the log too
+  finishedRun();
+  assert.ok(html().includes("Apply Patch") && html().includes("Open run log") && !html().includes("anyway"));
+  send({ type: "reset" }); send({ type: "error", message: "boom" });
+  assert.ok(html().includes("boom") && html().includes("Open run log") && html().includes("Run again"));
+  el("issue").value = "142"; el("issue").onchange();  // back to idle for whatever follows
+}
+
 console.log("webview tests passed");
 
 // confirm step: typed issue -> interpretation shown -> confirm runs the saved issue, edit goes back with the text kept

@@ -34,4 +34,8 @@ def issue_text(context: VerificationContext) -> str:
 
 def prior_text(context: VerificationContext) -> str:
     rs = context.extra.get("prior_results", [])
-    return "\n".join(f"- {r.verifier_name}: {r.status.value} ({'; '.join(f.message for f in r.findings[:2])})" for r in rs) or "none"
+    def line(r) -> str:
+        pre = [f for f in r.findings if "pre-existing failure" in f.message]
+        note = f"; {len(pre)} failure(s) are pre-existing: they also fail without this patch and are NOT caused by it" if pre else ""
+        return f"- {r.verifier_name}: {r.status.value} ({r.findings[0].message if r.findings else ''}{note})"
+    return "\n".join(line(r) for r in rs) or "none"

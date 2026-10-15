@@ -24,6 +24,8 @@ uv run verifix run --repo path/to/repo --issue https://github.com/owner/repo/iss
 uv run verifix verify --repo path/to/repo --patch change.diff --description "what it should fix"
 # interpret an issue without running anything (what the sidebar shows for confirmation)
 uv run verifix understand --repo path/to/repo --description "..."
+# apply a run's patch (a verified one freely; an unverified one only with --force, after it lists what failed)
+uv run verifix apply --repo path/to/repo [--force]
 # render / list results
 uv run verifix report --repo path/to/repo --list
 uv run verifix report --input report.json --out report.html
@@ -61,6 +63,13 @@ See `docs/verifix-pr.example.yml`.
 | `evaluation/` | oracle ground truth (held-out tests), metrics, baselines, ablations |
 | `reporting/`, `store/` | JSON / text / HTML reports; SQLite run history (`.verifix/runs.db`) |
 | `llm/`, `events/` | Groq client (cache, retry, token accounting); JSONL event stream used by the extension |
+
+## How blame is assigned
+Unit tests are compared with a baseline run of the **unpatched** repo. A test that already failed before the patch is reported as a
+*pre-existing failure* (shown, never held against the patch); a test that passed before and fails now is a *regression*. The agent may
+not edit test files (the edit tool refuses), and a patch that modifies existing tests is flagged. If a run ends **not verified**, the
+sidebar lists exactly which checks failed and offers **Apply best patch anyway** (a modal confirmation first; `verifix apply --force` on
+the CLI). An LLM/API error inside one attempt is recorded in that attempt instead of ending the run.
 
 ## Run logs (finding bugs from real use)
 Every `run`, `verify`, `understand` and `evaluate` writes `<repo>/.verifix/logs/<run_id>.jsonl` (override the folder with `VERIFIX_LOG_DIR`):

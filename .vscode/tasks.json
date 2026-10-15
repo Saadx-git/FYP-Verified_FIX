@@ -45,6 +45,18 @@
         "verifix: build extension"
       ],
       "problemMatcher": []
+    },
+    {
+      "label": "verifix: fresh fibonacci workspace",
+      "type": "shell",
+      "command": "node extension/scripts/prepare-workspace.js fibonacci",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": [
+        "verifix: build extension"
+      ],
+      "problemMatcher": []
     }
   ]
 }

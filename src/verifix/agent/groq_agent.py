@@ -10,7 +10,7 @@ from pathlib import Path
 from verifix.agent.base import AgentRequest, AgentResponse, CodingAgent
 from verifix.llm.client import GroqClient
 from verifix.models.patch import CandidatePatch, PatchMetadata, RepairPlan
-from verifix.patching.diff import parse_changed_files
+from verifix.patching.diff import is_test_path, parse_changed_files
 from verifix.repository.context_retriever import ContextRetriever
 from verifix.repository.dependency_analyzer import DependencyAnalyzer
 from verifix.repository.file_inspector import FileInspector
@@ -151,6 +151,8 @@ class GroqAgent(CodingAgent):
                 return "\n".join(SymbolSearcher().find_symbol(str(work), args["name"])) or "no matches"
             if name == "edit_file":
                 path = self._safe(work, args["path"])
+                if is_test_path(args["path"]):
+                    return "error: editing test files is not allowed; fix the code under test instead"
                 text = path.read_text()
                 if not args["old"]:
                     return "error: 'old' must not be empty"

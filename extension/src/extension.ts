@@ -12,6 +12,7 @@ class SidebarProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private proc?: ChildProcess;
   private finalDiff = "";
+  private finalVerified = false;
   private reportPath = "";
 
   constructor(private readonly ctx: vscode.ExtensionContext) {}
@@ -85,12 +86,13 @@ class SidebarProvider implements vscode.WebviewViewProvider {
     return undefined;
   }
 
-  private onMessage(m: { type: string; issueId?: string; text?: string }): void {
+  private onMessage(m: { type: string; issueId?: string; text?: string; force?: boolean; detail?: string }): void {
     if (m.type === "ready") { this.refreshIssues(); }
     else if (m.type === "understand" && m.text) { this.understand(m.text); }
     else if (m.type === "run" && (m.issueId || m.text)) { this.run(m.issueId ?? "", m.text ?? ""); }
     else if (m.type === "cancel") { this.proc?.kill(); }
-    else if (m.type === "apply") { void this.applyPatch(); }
+    else if (m.type === "apply") { void this.applyPatch(m.force === true, m.detail ?? ""); }
+    else if (m.type === "openLog") { void this.openLatestLog(); }
     else if (m.type === "log") { this.hostLog("webview_error", { message: (m as { message?: string }).message, line: (m as { line?: number }).line }); }
     else if (m.type === "report") { this.openReport(); }
   }
@@ -167,14 +169,22 @@ class SidebarProvider implements vscode.WebviewViewProvider {
   private handleLine(line: string): void {
     try {
       const ev = JSON.parse(line);
-      if (ev.type === "run_finished") { this.finalDiff = ev.data.diff ?? ""; }
+      if (ev.type === "run_finished") { this.finalDiff = ev.data.diff ?? ""; this.finalVerified = ev.data.decision === "verified"; }
       this.post({ type: "event", event: ev });
     } catch { this.post({ type: "log", text: line + "\n" }); }
   }
 
-  private async applyPatch(): Promise<void> {
+  private async applyPatch(force = false, detail = ""): Promise<void> {
     const ws = this.workspace();
     if (!ws || !this.finalDiff) { return; }
+    if (!this.finalVerified) {  // an unverified patch is applied only on an explicit, informed confirmation
+      if (!force) { return; }
+      const pick = await vscode.window.showWarningMessage(
+        "Apply this patch even though Verifix could not verify it?",
+        { modal: true, detail: `${detail || "Some checks failed."}\n\nReview the diff first. You can undo it with git.` }, "Apply anyway");
+      this.hostLog("apply_unverified", { confirmed: pick === "Apply anyway", detail: detail.slice(0, 400) });
+      if (pick !== "Apply anyway") { return; }
+    }
     const tmp = path.join(os.tmpdir(), `verifix-${Date.now()}.diff`);
     fs.writeFileSync(tmp, this.finalDiff);
     // Treat the open folder as the project root even when it sits inside a bigger git repo: otherwise git silently
@@ -191,7 +201,7 @@ class SidebarProvider implements vscode.WebviewViewProvider {
       return;
     }
     const files = [...this.finalDiff.matchAll(/^\+\+\+ b\/(.+)$/gm)].map((m) => m[1]);
-    vscode.window.showInformationMessage(`Verifix: patch applied to ${files.join(", ") || "the workspace"}.`);
+    vscode.window.showInformationMessage(`Verifix: patch applied to ${files.join(", ") || "the workspace"}${this.finalVerified ? "" : " (not verified)"}.`);
     this.post({ type: "applied" });
     if (files[0]) {
       const doc = await vscode.workspace.openTextDocument(path.join(ws, files[0]));
