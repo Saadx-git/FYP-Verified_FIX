@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 
 from verifix.agent.base import AgentRequest, AgentResponse, CodingAgent
+from verifix.events.emitter import EventEmitter
 from verifix.llm.client import GroqClient
 from verifix.models.patch import CandidatePatch, PatchMetadata, RepairPlan
 from verifix.patching.diff import is_test_path, parse_changed_files
@@ -49,6 +50,8 @@ class GroqAgent(CodingAgent):
 
     def __init__(self, client: GroqClient, model: str, max_steps: int = 16) -> None:
         self.client, self.model, self.max_steps = client, model, max_steps
+        self.emitter = EventEmitter()  # the harness swaps in its own so progress reaches the UI and the run log
+        client.on_wait = lambda seconds: self.emitter.emit("llm_wait", seconds=round(seconds))
 
     def generate_patch(self, request: AgentRequest) -> AgentResponse:
         with tempfile.TemporaryDirectory(prefix="verifix-agent-") as tmp:
@@ -67,9 +70,11 @@ class GroqAgent(CodingAgent):
             prompt = self._prompt(request, work, built_on_previous)
             messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]
             tokens, summary, confidence = 0, "", 0.5
-            for _ in range(self.max_steps):
+            for step in range(1, self.max_steps + 1):
                 resp = self.client.chat(self.model, messages, tools=TOOLS, max_tokens=4096, reasoning_effort="low", purpose="agent")
                 tokens += resp.tokens
+                self.emitter.emit("agent_step", step=step, max_steps=self.max_steps, tokens=resp.tokens,
+                                  tools=[c["function"]["name"] for c in resp.tool_calls])
                 messages.append(resp.message or {"role": "assistant", "content": resp.text})
                 if not resp.tool_calls:
                     summary = summary or resp.text.strip()[:300]

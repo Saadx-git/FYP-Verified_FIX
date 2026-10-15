@@ -5,7 +5,7 @@
   window.addEventListener("error", (e) => vscode.postMessage({ type: "log", message: String(e.message), line: e.lineno }));
   window.addEventListener("unhandledrejection", (e) => vscode.postMessage({ type: "log", message: "unhandled rejection: " + String(e.reason) }));
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const fresh = () => ({ phase: "idle", unclear: "", status: "", attempt: 0, max: 0, diff: "", verifiers: [], track: [], logs: "", error: "", final: null, applied: false, cur: null });
+  const fresh = () => ({ phase: "idle", unclear: "", status: "", attempt: 0, max: 0, diff: "", verifiers: [], track: [], logs: "", error: "", final: null, applied: false, cur: null, step: 0, tool: "", wait: 0 });
   let issues = [];
   let selected = "";
   let draft = "";
@@ -72,7 +72,9 @@
         <div class="row"><button id="confirm">Looks right — Run Verifix</button><button class="secondary" id="edit">Edit description</button></div>`;
     } else {
       if (running) {
-        h += `<div class="card active"><span class="ico spin">◌</span><div>${s.attempt ? `Generating patch — attempt ${s.attempt} of ${s.max}` : esc(s.status || "Starting…")}</div></div>`;
+        const label = s.verifiers.length ? "Verifying patch" : "Generating patch";
+        h += `<div class="card active"><span class="ico spin">◌</span><div>${s.attempt ? `${label} — attempt ${s.attempt} of ${s.max}${!s.verifiers.length && s.step ? ` · step ${s.step}${s.tool ? ` (${esc(s.tool)})` : ""}` : ""}` : esc(s.status || "Starting…")}${
+          s.wait ? `<div class="sub">Rate-limited by the model provider: waiting ${s.wait}s, then retrying…</div>` : ""}</div></div>`;
         if (s.diff) { h += `<h4>Synthesized diff (candidate #${s.attempt})</h4>` + renderDiff(s.diff); }
         if (s.verifiers.length) { h += "<h4>Verification pipeline</h4>" + s.verifiers.map(verifierRow).join(""); }
       }
@@ -136,10 +138,12 @@
         else { s.phase = "review"; }
         break;
       case "run_started": s.max = d.max_attempts; break;
-      case "attempt_started": s.attempt = d.attempt; s.max = d.max_attempts; s.verifiers = []; s.diff = ""; s.cur = { attempt: d.attempt, plan: "", files: [], diff: "", error: "" }; break;
+      case "attempt_started": s.attempt = d.attempt; s.max = d.max_attempts; s.verifiers = []; s.diff = ""; s.step = 0; s.tool = ""; s.wait = 0; s.cur = { attempt: d.attempt, plan: "", files: [], diff: "", error: "" }; break;
       case "patch_generated": s.diff = d.diff; if (s.cur) Object.assign(s.cur, { plan: d.plan, files: d.files, diff: d.diff }); break;
       case "agent_error": if (s.cur) s.cur.error = d.message; break;
-      case "verifier_started": s.verifiers.push({ name: d.verifier, status: "running", summary: "" }); break;
+      case "agent_step": s.step = d.step; s.tool = (d.tools || []).join(", "); s.wait = 0; break;
+      case "llm_wait": s.wait = d.seconds; break;
+      case "verifier_started": s.wait = 0; s.verifiers.push({ name: d.verifier, status: "running", summary: "" }); break;
       case "verifier_skipped": s.verifiers.push({ name: d.verifier, status: "skipped", summary: "skipped — " + d.reason }); break;
       case "verifier_finished": {
         const v = s.verifiers.find((x) => x.name === d.verifier && x.status === "running");

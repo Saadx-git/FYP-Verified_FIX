@@ -53,6 +53,7 @@ class GroqClient:
         self._transport = transport or self._http
         self.total_tokens = 0
         self._retries = 0
+        self.on_wait = None  # optional callback(seconds): told before sleeping on a rate limit
 
     def chat(self, model: str, messages: list[dict], *, purpose: str = "", **kwargs) -> LLMResponse:
         """One chat call; `purpose` (agent, understand, requirement, ...) labels it in the run log."""
@@ -111,6 +112,8 @@ class GroqClient:
                     raise RuntimeError(f"Groq API error {e.code}: {e.read().decode()[:300]}") from e
                 self._retries += 1
                 wait = float(e.headers.get("retry-after") or delay)
+                if self.on_wait:
+                    self.on_wait(min(wait, 60))
                 time.sleep(min(wait, 60))
                 delay *= 2
         raise RuntimeError("unreachable")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import signal
 import sys
 import time
 from pathlib import Path
@@ -133,9 +134,18 @@ def main(argv: list[str] | None = None) -> int:
     except OSError as exc:  # logging must never stop a run
         print(f"verifix: run logging disabled ({exc})", file=sys.stderr)
         return _dispatch(args)
-    with log:
-        log.exit_code = code = _dispatch(args)
-        return code
+    previous = None
+    try:  # Cancel in the sidebar sends SIGTERM: turn it into a clean, logged "cancelled" instead of vanishing mid-run
+        previous = signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
+    except (ValueError, AttributeError):  # not the main thread / not supported on this platform
+        pass
+    try:
+        with log:
+            log.exit_code = code = _dispatch(args)
+            return code
+    finally:
+        if previous is not None:
+            signal.signal(signal.SIGTERM, previous)
 
 
 def _dispatch(args: argparse.Namespace) -> int:

@@ -69,7 +69,7 @@ Unit tests are compared with a baseline run of the **unpatched** repo. A test th
 *pre-existing failure* (shown, never held against the patch); a test that passed before and fails now is a *regression*. The agent may
 not edit test files (the edit tool refuses), and a patch that modifies existing tests is flagged. If a run ends **not verified**, the
 sidebar lists exactly which checks failed and offers **Apply best patch anyway** (a modal confirmation first; `verifix apply --force` on
-the CLI). An LLM/API error inside one attempt is recorded in that attempt instead of ending the run.
+the CLI). An LLM/API error inside one attempt is recorded in that attempt instead of ending the run. The generated reproduction test is the least-trusted evidence (a model writes it from the issue text): it is told to assert only what the report states, and if it is the *only* failing check while the requirement check and the project's own tests pass, the run is VERIFIED with a visible warning instead of being rejected. Cancelling a run (SIGTERM) is logged as `cancelled`; the sidebar shows each agent step and any rate-limit wait.
 
 ## Run logs (finding bugs from real use)
 Every `run`, `verify`, `understand` and `evaluate` writes `<repo>/.verifix/logs/<run_id>.jsonl` (override the folder with `VERIFIX_LOG_DIR`):

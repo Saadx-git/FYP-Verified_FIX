@@ -38,7 +38,9 @@ class VerificationOrchestrator:
         for name in strategy.verifier_names:
             if name not in self.registry.names():
                 continue
-            if skip_expensive and name in EXPENSIVE and any(r.status is VerificationStatus.FAIL for r in results):
+            # a failed (model-written) reproduction test must not stop the requirement check: it is the tie-breaker
+            blocking = [r for r in results if r.status is VerificationStatus.FAIL and not (name == "requirement" and r.verifier_name == "reproduction")]
+            if skip_expensive and name in EXPENSIVE and blocking:
                 self.emitter.emit("verifier_skipped", verifier=name, patch_id=context.patch.patch_id,
                                   reason="a cheaper verifier already failed")
                 continue

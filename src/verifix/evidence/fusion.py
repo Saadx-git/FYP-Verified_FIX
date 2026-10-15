@@ -43,6 +43,11 @@ class EvidenceFusionEngine:
         by_name = {r.verifier_name: r for r in assessment.results
                    if self.decide_on is None or r.verifier_name in self.decide_on}
         failed = [n for n, r in by_name.items() if r.status is VerificationStatus.FAIL]
+        req, unit = by_name.get("requirement"), by_name.get("unit_tests")
+        disputed = (failed == ["reproduction"] and req is not None and req.status is VerificationStatus.PASS
+                    and unit is not None and unit.status in (VerificationStatus.PASS, VerificationStatus.WARNING))
+        if disputed:  # a model-written test over-specifying the issue is the likeliest explanation; say so, do not hide it
+            failed = []
         if failed:
             return VerificationDecision(
                 DecisionType.REPAIR_REQUIRED, assessment, f"failed: {', '.join(sorted(failed))}"
@@ -53,4 +58,8 @@ class EvidenceFusionEngine:
             return VerificationDecision(
                 DecisionType.INSUFFICIENT_EVIDENCE, assessment, f"no conclusive evidence: {', '.join(sorted(missing))}"
             )
+        if disputed:
+            return VerificationDecision(DecisionType.VERIFIED, assessment,
+                                        "verified with a warning: the generated reproduction test fails, but the requirement check and the "
+                                        "project's own tests pass, so the generated test may over-specify the issue")
         return VerificationDecision(DecisionType.VERIFIED, assessment, "all required evidence passed")

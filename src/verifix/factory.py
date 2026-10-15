@@ -67,6 +67,8 @@ def build_application(agent: CodingAgent, options: HarnessOptions, emitter: Even
     config.verification.enabled_verifiers = enabled
 
     store = EvidenceStore()
+    if hasattr(agent, "emitter"):  # agents report their steps and rate-limit waits through the run's emitter
+        agent.emitter = emitter
     orchestrator = AgentOrchestrator(agent)
     tracker = BudgetTracker(config.retry_budget, config.cost_budget)
     return VerifixApplication(

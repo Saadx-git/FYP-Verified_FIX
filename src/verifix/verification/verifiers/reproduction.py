@@ -23,7 +23,10 @@ SYSTEM = (
     "You write a minimal pytest reproduction test for a bug report. The test must FAIL on the current (buggy) code "
     "and PASS once the bug is fixed. Rules: use only the public behaviour described in the report; 1-4 small "
     "deterministic test functions; import from the repository the same way the existing tests do; no mocks of "
-    "internals; no network or file writes; do not assume how the fix is implemented. "
+    "internals; no network or file writes; do not assume how the fix is implemented. Assert ONLY behaviour the report "
+    "explicitly states or gives an example of; never add edge cases the report does not mention (negative, zero, huge or "
+    "empty inputs, other types, error handling) and never decide business rules yourself; if the report is vague, test the "
+    "single most direct example it implies and follow the conventions shown by the existing tests. "
     'Respond with JSON: {"test_code": str}'
 )
 
@@ -103,7 +106,8 @@ class ReproductionVerifier(Verifier):
             parts.append(f"Current code around {rel}:{line}:\n"
                          + FileInspector().read_file(str(repo / rel), start=start, end=start + 80, max_lines=80))
         tests = sorted((repo / "tests").glob("test_*.py")) if (repo / "tests").is_dir() else []
-        if tests:
-            parts.append(f"Example of an existing test ({tests[0].relative_to(repo)}), follow its import style:\n"
-                         + tests[0].read_text()[:1200])
+        shown = "\n\n".join(f"# {t.relative_to(repo)}\n{t.read_text()[:1500]}" for t in tests[:3])[:3500]
+        if shown:
+            parts.append("Existing tests show the project's conventions and intended behaviour; follow their import style and "
+                         f"do not contradict them:\n{shown}")
         return "\n\n".join(parts)

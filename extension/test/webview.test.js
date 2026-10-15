@@ -134,6 +134,18 @@ same(posted[0], { type: "log", message: "x is not defined", line: 7 }, "UI error
   ev("run_finished", { decision: "reject", attempts: 0, score: 0, diff: "" });
   assert.ok(!html().includes("Apply best patch anyway"));
 
+  // live progress: the agent's steps, rate-limit waits, and the switch to "Verifying"
+  send({ type: "reset" });
+  ev("attempt_started", { attempt: 2, max_attempts: 3 });
+  ev("agent_step", { step: 4, max_steps: 16, tools: ["edit_file"], tokens: 900 });
+  assert.ok(html().includes("Generating patch — attempt 2 of 3 · step 4 (edit_file)"), "agent step shown");
+  ev("llm_wait", { seconds: 12 });
+  assert.ok(html().includes("Rate-limited by the model provider: waiting 12s"), "rate-limit wait shown, so a slow run does not look frozen");
+  ev("agent_step", { step: 5, max_steps: 16, tools: ["submit"], tokens: 100 });
+  assert.ok(!html().includes("waiting 12s") && html().includes("step 5 (submit)"), "wait note clears on the next step");
+  ev("patch_generated", { attempt: 2, plan: "p", files: ["a.py"], diff: "d" });
+  ev("verifier_started", { verifier: "unit_tests" });
+  assert.ok(html().includes("Verifying patch — attempt 2 of 3") && !html().includes("Generating patch"), "label switches to verifying");
   // a verified run keeps the normal button and also offers the log; an error offers the log too
   finishedRun();
   assert.ok(html().includes("Apply Patch") && html().includes("Open run log") && !html().includes("anyway"));
