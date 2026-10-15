@@ -79,7 +79,7 @@ class ReproductionVerifier(Verifier):
         tokens, feedback = 0, ""
         prompt = f"{issue_text(context)}\n\n{self._code_context(context)}"
         for _ in range(2):
-            data, used = ask_json(self.client, self.model, SYSTEM, prompt + feedback)
+            data, used = ask_json(self.client, self.model, SYSTEM, prompt + feedback, "reproduction")
             tokens += used
             code = str(data.get("test_code", "")).strip()
             if not code:

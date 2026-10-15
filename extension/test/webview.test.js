@@ -79,6 +79,10 @@ assert.ok(html().includes('id="edit"'), "offers to edit the description");
 el("edit").onclick();
 assert.ok(html().includes('id="draft"') && html().includes("Camp is not restricted to range"), "back to the form, text kept");
 
+// script errors in the sidebar are forwarded to the host log
+posted.length = 0;
+handlers.error({ message: "x is not defined", lineno: 7 });
+same(posted[0], { type: "log", message: "x is not defined", line: 7 }, "UI errors are reported to the host");
 console.log("webview tests passed");
 
 // confirm step: typed issue -> interpretation shown -> confirm runs the saved issue, edit goes back with the text kept

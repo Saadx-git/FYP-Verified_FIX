@@ -28,7 +28,7 @@ class IssueUnderstander:
 
     def understand(self, issue_id: str, text: str, repo_path: str, title: str = "") -> Issue:
         outline = repo_outline(repo_path)
-        data, _ = ask_json(self.client, self.model, SYSTEM, f"Repository outline:\n{outline}\n\nBug report:\n{text[:4000]}")
+        data, _ = ask_json(self.client, self.model, SYSTEM, f"Repository outline:\n{outline}\n\nBug report:\n{text[:4000]}", "understand")
         # checked in code, not trusted: the report matches only if a name the model cites really is in the repository
         known = set(re.findall(r"\w+", outline))
         cited = [n for n in data.get("related_names", []) if isinstance(n, str) and n in known]

@@ -68,7 +68,7 @@ class GroqAgent(CodingAgent):
             messages = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]
             tokens, summary, confidence = 0, "", 0.5
             for _ in range(self.max_steps):
-                resp = self.client.chat(self.model, messages, tools=TOOLS, max_tokens=4096, reasoning_effort="low")
+                resp = self.client.chat(self.model, messages, tools=TOOLS, max_tokens=4096, reasoning_effort="low", purpose="agent")
                 tokens += resp.tokens
                 messages.append(resp.message or {"role": "assistant", "content": resp.text})
                 if not resp.tool_calls:

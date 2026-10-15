@@ -62,6 +62,23 @@ See `docs/verifix-pr.example.yml`.
 | `reporting/`, `store/` | JSON / text / HTML reports; SQLite run history (`.verifix/runs.db`) |
 | `llm/`, `events/` | Groq client (cache, retry, token accounting); JSONL event stream used by the extension |
 
+## Run logs (finding bugs from real use)
+Every `run`, `verify`, `understand` and `evaluate` writes `<repo>/.verifix/logs/<run_id>.jsonl` (override the folder with `VERIFIX_LOG_DIR`):
+all harness events, every LLM call (purpose, model, tokens, latency, retries, errors, 1500-char previews), handled errors, crashes with
+tracebacks, and a closing record with the outcome and automatic **signals** (`crashed`, `verifier_crashed`, `empty_patch`, `unclear_issue`,
+`disagreement` between tests and the independent checks, `stuck`, `llm_error`, `llm_retries`, `rejected`, `attempts_exhausted`).
+The VS Code extension adds `extension.jsonl` (CLI starts/exits, spawn failures, Apply Patch results, sidebar script errors); command
+**Verifix: Open Latest Run Log**.
+```bash
+uv run verifix logs --repo <repo>                 # recent runs with decision, tokens, signals
+uv run verifix logs --repo <repo> --signal crashed
+uv run verifix logs --repo <repo> --show <run_id> # timeline of one run
+uv run verifix logs --repo <repo> --summary       # outcomes, signals, LLM + verifier stats, crash groups
+```
+`VERIFIX_LOG_CONTENT=off|preview|full` sets how much prompt/response text is kept (default preview). API keys and tokens are redacted from
+every line, but previews can contain code and issue text, so treat log folders as private. The newest 300 runs are kept (`VERIFIX_LOG_KEEP`).
+A logging failure never stops a run.
+
 ## Known limitations
 - Typed issues are interpreted by an LLM against an outline of the repo: typos are mapped to real names, but a vague or unrelated report can be force-fitted onto the closest function. The sidebar shows the interpretation for confirmation before anything runs; read it before pressing Run.
 - Python repositories only. Dependencies of the target repo are not installed automatically (container `install=True` exists but is not exposed yet).

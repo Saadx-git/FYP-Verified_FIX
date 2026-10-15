@@ -17,7 +17,8 @@
     },
     "commands": [
       { "command": "verifix.run", "title": "Verifix: Run on Selected Issue" },
-      { "command": "verifix.refreshIssues", "title": "Verifix: Refresh Issues" }
+      { "command": "verifix.refreshIssues", "title": "Verifix: Refresh Issues" },
+      { "command": "verifix.openLogs", "title": "Verifix: Open Latest Run Log" }
     ],
     "configuration": {
       "title": "Verifix",

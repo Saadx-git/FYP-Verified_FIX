@@ -18,6 +18,16 @@ from verifix.issue.understanding import IssueUnderstander
 from verifix.llm.client import GroqClient
 from verifix.reporting.generator import HumanReadableReportGenerator, JSONReportGenerator
 from verifix.reporting.html import HTMLReportGenerator, report_from_json
+from verifix.runlog import (
+    HOST_LOG,
+    RunLog,
+    format_list,
+    format_show,
+    load_runs,
+    log_dir,
+    note_error,
+    summarize,
+)
 from verifix.store.runs import RunStore
 
 
@@ -60,6 +70,14 @@ def build_parser() -> argparse.ArgumentParser:
     un.add_argument("--description", help="plain-English bug description")
     un.add_argument("--description-file")
 
+    lg = sub.add_parser("logs", help="Inspect run logs: list, show one run, or summarize to find bugs and weak spots")
+    lg.add_argument("--repo", default=".", help="repo whose .verifix/logs to read (default: current folder)")
+    lg.add_argument("--dir", help="read this log folder instead (e.g. VERIFIX_LOG_DIR)")
+    lg.add_argument("--last", type=int, default=20)
+    lg.add_argument("--show", metavar="RUN_ID", help="print one run's timeline (a unique prefix is enough)")
+    lg.add_argument("--summary", action="store_true", help="aggregate outcomes, signals, LLM and verifier stats, crashes")
+    lg.add_argument("--signal", default="", help="only runs with this warning signal (e.g. empty_patch, disagreement, crashed)")
+
     ev = sub.add_parser("evaluate", help="Run baselines / full system / ablations over a dataset")
     ev.add_argument("--dataset", required=True, help="JSON list of instances")
     ev.add_argument("--config", default="full", help="comma-separated config names, or 'all' (see evaluation/baseline.py)")
@@ -96,8 +114,25 @@ def build_application(args: argparse.Namespace, emitter: EventEmitter) -> Verifi
     return build(_build_agent(args, config), options, emitter, config=config)
 
 
+_LOGGED = {"run", "verify", "understand", "evaluate"}
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.command not in _LOGGED:
+        return _dispatch(args)
+    base = getattr(args, "repo", None) or str(Path(args.dataset).parent)
+    try:
+        log = RunLog.start_for(args.command, base, list(sys.argv[1:] if argv is None else argv))
+    except OSError as exc:  # logging must never stop a run
+        print(f"verifix: run logging disabled ({exc})", file=sys.stderr)
+        return _dispatch(args)
+    with log:
+        log.exit_code = code = _dispatch(args)
+        return code
+
+
+def _dispatch(args: argparse.Namespace) -> int:
     if args.command == "verify":
         args.agent, args.max_attempts, args.model = "patch", 1, None
     if args.command in ("run", "verify"):
@@ -110,6 +145,7 @@ def main(argv: list[str] | None = None) -> int:
                                      understander=understander, emitter=emitter)
             report = build_application(args, emitter).run(repo=args.repo, issue_id=issue_id)
         except (RuntimeError, FileNotFoundError) as exc:
+            note_error(exc)
             print(f"verifix: {exc}", file=sys.stderr)
             return 2
         RunStore(str(Path(args.repo) / ".verifix" / "runs.db")).save(
@@ -129,9 +165,12 @@ def main(argv: list[str] | None = None) -> int:
                              understander=IssueUnderstander(GroqClient(), VerifixConfig().model.diagnosis_model),
                              emitter=EventEmitter(sys.stdout))
         except (RuntimeError, FileNotFoundError) as exc:
+            note_error(exc)
             print(f"verifix: {exc}", file=sys.stderr)
             return 2
         return 0
+    if args.command == "logs":
+        return _logs(args)
     if args.command == "report":
         if args.list:
             for rid, created, issue, decision, attempts, tokens, score in RunStore(str(Path(args.repo) / ".verifix" / "runs.db")).list():
@@ -149,6 +188,22 @@ def main(argv: list[str] | None = None) -> int:
         return _evaluate(args)
     print(f"verifix {args.command}: not implemented yet", file=sys.stderr)
     return 2
+
+
+def _logs(args: argparse.Namespace) -> int:
+    folder = Path(args.dir) if args.dir else log_dir(args.repo)
+    runs = load_runs(folder)
+    if args.show:
+        hit = [r for r in runs if r["id"].startswith(args.show)]
+        if len(hit) != 1:
+            print(f"verifix: {len(hit)} runs match {args.show!r}", file=sys.stderr)
+            return 2
+        print(format_show(hit[0]))
+    elif args.summary:
+        print(summarize(runs, folder / HOST_LOG))
+    else:
+        print(format_list(runs, args.last, args.signal))
+    return 0
 
 
 def _evaluate(args: argparse.Namespace) -> int:

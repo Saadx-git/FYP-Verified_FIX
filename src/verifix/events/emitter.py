@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from typing import IO, Any
 
 SCHEMA_VERSION = 1
+SINKS: list[Callable[[dict[str, Any]], None]] = []  # every emitted event also goes here (the run log registers itself)
 
 
 class EventEmitter:
@@ -17,6 +19,8 @@ class EventEmitter:
     def emit(self, type: str, **data: Any) -> dict[str, Any]:
         event = {"v": SCHEMA_VERSION, "ts": time.time(), "type": type, "data": data}
         self.events.append(event)
+        for sink in SINKS:
+            sink(event)
         if self.stream is not None:
             self.stream.write(json.dumps(event, default=str) + "\n")
             self.stream.flush()

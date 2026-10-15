@@ -22,7 +22,7 @@ class LLMReviewVerifier(Verifier):
 
     def verify(self, context: VerificationContext) -> VerificationResult:
         data, tokens = ask_json(self.client, self.model, SYSTEM,
-                                f"{issue_text(context)}\n\nDiff:\n{context.patch.diff[:MAX_DIFF]}")
+                                f"{issue_text(context)}\n\nDiff:\n{context.patch.diff[:MAX_DIFF]}", "review")
         verdict = data.get("verdict")
         concerns = [str(c)[:240] for c in data.get("concerns", [])][:6]
         if verdict not in ("approve", "concerns", "reject"):

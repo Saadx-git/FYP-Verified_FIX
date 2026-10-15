@@ -9,10 +9,10 @@ from verifix.verification.base import VerificationContext
 MAX_DIFF = 6000
 
 
-def ask_json(client: GroqClient, model: str, system: str, user: str) -> tuple[dict, int]:
+def ask_json(client: GroqClient, model: str, system: str, user: str, purpose: str = "") -> tuple[dict, int]:
     """One JSON-mode call; returns (parsed object, tokens). Unparseable output yields {}."""
     resp = client.chat(model, [{"role": "system", "content": system}, {"role": "user", "content": user}],
-                       max_tokens=2048, json_mode=True, reasoning_effort="low")
+                       max_tokens=2048, json_mode=True, reasoning_effort="low", purpose=purpose)
     text = resp.text.strip()
     try:
         return json.loads(text), resp.tokens

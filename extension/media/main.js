@@ -1,6 +1,9 @@
 (function () {
   const vscode = acquireVsCodeApi();
   const app = document.getElementById("app");
+  // script errors in the sidebar are reported to the host's log instead of vanishing
+  window.addEventListener("error", (e) => vscode.postMessage({ type: "log", message: String(e.message), line: e.lineno }));
+  window.addEventListener("unhandledrejection", (e) => vscode.postMessage({ type: "log", message: "unhandled rejection: " + String(e.reason) }));
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const fresh = () => ({ phase: "idle", unclear: "", status: "", attempt: 0, max: 0, diff: "", verifiers: [], track: [], logs: "", error: "", final: null, applied: false });
   let issues = [];

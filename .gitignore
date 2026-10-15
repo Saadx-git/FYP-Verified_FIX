@@ -15,3 +15,4 @@ extension/out/
 **/.verifix/runs.db
 data/
 .workspaces/
+**/.verifix/logs/

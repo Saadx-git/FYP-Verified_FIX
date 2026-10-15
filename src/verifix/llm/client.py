@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+OBSERVERS: list = []  # called with one dict per LLM call (the run log registers itself)
 
 
 @dataclass
@@ -51,10 +52,29 @@ class GroqClient:
         self.max_retries = max_retries
         self._transport = transport or self._http
         self.total_tokens = 0
+        self._retries = 0
 
-    def chat(self, model: str, messages: list[dict], *, tools: list[dict] | None = None,
-             temperature: float = 0.0, max_tokens: int = 2048, json_mode: bool = False,
-             use_cache: bool = True, reasoning_effort: str | None = None) -> LLMResponse:
+    def chat(self, model: str, messages: list[dict], *, purpose: str = "", **kwargs) -> LLMResponse:
+        """One chat call; `purpose` (agent, understand, requirement, ...) labels it in the run log."""
+        start, self._retries = time.monotonic(), 0
+        record = {"purpose": purpose, "model": model, "messages": len(messages)}
+        try:
+            resp = self._chat(model, messages, **kwargs)
+        except Exception as exc:
+            for observe in OBSERVERS:
+                observe({**record, "seconds": time.monotonic() - start, "retries": self._retries, "error": f"{type(exc).__name__}: {exc}",
+                         "request": messages[-1].get("content") if messages else ""})
+            raise
+        for observe in OBSERVERS:
+            observe({**record, "seconds": time.monotonic() - start, "retries": self._retries, "cached": resp.cached,
+                     "prompt_tokens": resp.prompt_tokens, "completion_tokens": resp.completion_tokens,
+                     "tool_calls": [c.get("function", {}).get("name", "?") for c in resp.tool_calls],
+                     "request": messages[-1].get("content") if messages else "", "response": resp.text})
+        return resp
+
+    def _chat(self, model: str, messages: list[dict], *, tools: list[dict] | None = None,
+              temperature: float = 0.0, max_tokens: int = 2048, json_mode: bool = False,
+              use_cache: bool = True, reasoning_effort: str | None = None) -> LLMResponse:
         body: dict = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}
         if tools:
             body["tools"] = tools
@@ -89,6 +109,7 @@ class GroqClient:
             except urllib.error.HTTPError as e:
                 if e.code not in (429, 500, 502, 503) or attempt == self.max_retries:
                     raise RuntimeError(f"Groq API error {e.code}: {e.read().decode()[:300]}") from e
+                self._retries += 1
                 wait = float(e.headers.get("retry-after") or delay)
                 time.sleep(min(wait, 60))
                 delay *= 2

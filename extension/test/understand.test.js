@@ -5,11 +5,14 @@ const log = path.join(ws, "cli.log");
 process.env.FAKE_CLI_LOG = log;
 let settings = { command: ["node", path.resolve(__dirname, "fake_cli.js")] };
 const posted = [];
+const opened = [];
 const vscodeMock = {
+  cmds: {},
   window: { registerWebviewViewProvider: (_i, p) => { vscodeMock.provider = p; return { dispose() {} }; },
-            showInformationMessage() {}, showErrorMessage: (m) => posted.push({ type: "vscode-error", m }) },
-  workspace: { workspaceFolders: [{ uri: { fsPath: ws } }], getConfiguration: () => ({ get: (k) => settings[k] }) },
-  commands: { registerCommand: () => ({ dispose() {} }), executeCommand() {} },
+            showInformationMessage: (m) => posted.push({ type: "vscode-info", m }), showErrorMessage: (m) => posted.push({ type: "vscode-error", m }),
+            showTextDocument: async (d) => opened.push(d.file) },
+  workspace: { workspaceFolders: [{ uri: { fsPath: ws } }], getConfiguration: () => ({ get: (k) => settings[k] }), openTextDocument: async (f) => ({ file: f }) },
+  commands: { registerCommand: (id, fn) => { vscodeMock.cmds[id] = fn; return { dispose() {} }; }, executeCommand() {} },
   Uri: { joinPath: (...a) => ({ fsPath: a.join("/") }) }, ViewColumn: { Beside: 2 },
 };
 const load = Module._load;
@@ -17,7 +20,8 @@ Module._load = (req, ...r) => (req === "vscode" ? vscodeMock : load(req, ...r));
 require(path.resolve(__dirname, "../out/extension.js")).activate({ extensionUri: {}, subscriptions: [] });
 vscodeMock.provider.resolveWebviewView({ webview: { options: {}, html: "", asWebviewUri: (u) => u, cspSource: "",
   onDidReceiveMessage: () => {}, postMessage: (m) => posted.push(m) } });
-const calls = () => fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l));
+const records = () => fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l));
+const calls = () => records().map((r) => r.args);
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 (async () => {
@@ -48,6 +52,33 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   assert.strictEqual(run[run.indexOf("--issue") + 1], "adhoc-1");
   assert.ok(!run.includes("--description-file") && run.includes("--events"));
   assert.ok(posted.some((m) => m.type === "event" && m.event.type === "run_finished"));
+
+  // the CLI is told it is being driven from VS Code, so its run log says so
+  assert.ok(records().every((r) => r.client === "vscode"), "VERIFIX_CLIENT=vscode passed to the CLI");
+
+  // the host log records each CLI start and exit, and never the typed text
+  const host = fs.readFileSync(path.join(ws, ".verifix", "logs", "extension.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  assert.deepStrictEqual(host.filter((h) => h.type === "cli_start").map((h) => h.data.command), ["understand", "understand", "run"]);
+  assert.deepStrictEqual(host.filter((h) => h.type === "cli_exit").map((h) => h.data.code), [0, 0, 0]);
+  assert.ok(!JSON.stringify(host).includes("Camp is not restricted"), "typed issue text is not written to the host log");
+
+  // a command that cannot start is logged and reported
+  settings = { ...settings, command: ["/no/such/binary"] };
+  posted.length = 0; vscodeMock.provider.onMessage({ type: "understand", text: "x y z" });
+  await wait(600);
+  assert.ok(posted.some((m) => m.type === "error" && /Could not start/.test(m.message)));
+  assert.ok(fs.readFileSync(path.join(ws, ".verifix", "logs", "extension.jsonl"), "utf8").includes("cli_spawn_error"));
+  settings = { ...settings, command: ["node", path.resolve(__dirname, "fake_cli.js")] };
+
+  // UI script errors reach the host log
+  vscodeMock.provider.onMessage({ type: "log", message: "boom in sidebar", line: 42 });
+  assert.ok(fs.readFileSync(path.join(ws, ".verifix", "logs", "extension.jsonl"), "utf8").includes("boom in sidebar"));
+
+  // "Open Latest Run Log" opens the newest run log, not the host log
+  fs.writeFileSync(path.join(ws, ".verifix", "logs", "20260101-000000-aaaaaa.jsonl"), "{}\n");
+  fs.writeFileSync(path.join(ws, ".verifix", "logs", "20260102-000000-bbbbbb.jsonl"), "{}\n");
+  await vscodeMock.cmds["verifix.openLogs"]();
+  assert.strictEqual(path.basename(opened.at(-1)), "20260102-000000-bbbbbb.jsonl");
 
   // 4. the setting turns confirmation off
   settings = { ...settings, confirmInterpretation: false };

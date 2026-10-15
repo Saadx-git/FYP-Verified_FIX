@@ -1,7 +1,7 @@
 // Stand-in for the verifix CLI: records its arguments and prints canned JSONL events.
 const fs = require("fs");
 const args = process.argv.slice(2);
-fs.appendFileSync(process.env.FAKE_CLI_LOG, JSON.stringify(args) + "\n");
+fs.appendFileSync(process.env.FAKE_CLI_LOG, JSON.stringify({ args, client: process.env.VERIFIX_CLIENT }) + "\n");
 const out = (type, data) => console.log(JSON.stringify({ v: 1, ts: 0, type, data }));
 const value = (flag) => args[args.indexOf(flag) + 1];
 if (args.includes("understand")) {

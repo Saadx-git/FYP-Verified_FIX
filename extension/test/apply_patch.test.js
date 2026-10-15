@@ -39,6 +39,10 @@ setTimeout(() => {
   setTimeout(() => {
     assert.strictEqual(calls.error.length, 1);
     assert.strictEqual(calls.info.length, 0);
+    const host = fs.readFileSync(path.join(ws, ".verifix", "logs", "extension.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l))
+      .filter((h) => h.type === "apply_result");
+    assert.deepStrictEqual(host.map((h) => h.data.landed), [true, false], "both apply attempts are logged with their outcome");
+    assert.deepStrictEqual(host[0].data.files, ["pricing/discount.py"]);
     fs.rmSync(root, { recursive: true, force: true });
     console.log("apply-patch tests passed");
   }, 600);

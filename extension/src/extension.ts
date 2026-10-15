@@ -6,6 +6,8 @@ import * as vscode from "vscode";
 
 interface IssueInfo { id: string; title: string }
 
+const SECRET = /(gsk_\w{10,}|ghp_\w{10,}|github_pat_\w{10,}|bearer\s+[\w.-]{12,})/gi;
+
 class SidebarProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private proc?: ChildProcess;
@@ -23,6 +25,31 @@ class SidebarProvider implements vscode.WebviewViewProvider {
   }
 
   post(msg: unknown): void { this.view?.webview.postMessage(msg); }
+
+  /** Where run logs live: VERIFIX_LOG_DIR, else <workspace>/.verifix/logs (same rule as the CLI). */
+  logDir(): string | undefined {
+    const ws = this.workspace();
+    return process.env.VERIFIX_LOG_DIR || (ws ? path.join(ws, ".verifix", "logs") : undefined);
+  }
+
+  /** Append one JSONL record about what the extension host did (never throws; secrets redacted). */
+  hostLog(type: string, data: Record<string, unknown> = {}): void {
+    const dir = this.logDir();
+    if (!dir) { return; }
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.appendFileSync(path.join(dir, "extension.jsonl"), JSON.stringify({ v: 1, ts: Date.now() / 1000, type, data }).replace(SECRET, "[REDACTED]") + "\n");
+    } catch { /* logging must never break the extension */ }
+  }
+
+  /** Open the newest run log in the editor. */
+  async openLatestLog(): Promise<void> {
+    const dir = this.logDir();
+    const files = dir && fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith(".jsonl") && f !== "extension.jsonl").sort() : [];
+    if (!dir || !files.length) { vscode.window.showInformationMessage("Verifix: no run logs yet."); return; }
+    const doc = await vscode.workspace.openTextDocument(path.join(dir, files[files.length - 1]));
+    await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preview: true });
+  }
 
   refreshIssues(): void {
     const cfg = vscode.workspace.getConfiguration("verifix");
@@ -64,6 +91,7 @@ class SidebarProvider implements vscode.WebviewViewProvider {
     else if (m.type === "run" && (m.issueId || m.text)) { this.run(m.issueId ?? "", m.text ?? ""); }
     else if (m.type === "cancel") { this.proc?.kill(); }
     else if (m.type === "apply") { void this.applyPatch(); }
+    else if (m.type === "log") { this.hostLog("webview_error", { message: (m as { message?: string }).message, line: (m as { line?: number }).line }); }
     else if (m.type === "report") { this.openReport(); }
   }
 
@@ -84,8 +112,10 @@ class SidebarProvider implements vscode.WebviewViewProvider {
     const [cmd, ...base] = vscode.workspace.getConfiguration("verifix").get<string[]>("command") ?? ["uv", "run", "verifix"];
     this.post({ type: "reset" });
     this.proc?.kill();
-    const proc = spawn(cmd, [...base, ...subcommand, "--repo", ws, ...extra], { cwd: this.projectDir() ?? ws });
+    const cwd = this.projectDir() ?? ws;
+    const proc = spawn(cmd, [...base, ...subcommand, "--repo", ws, ...extra], { cwd, env: { ...process.env, VERIFIX_CLIENT: "vscode" } });
     this.proc = proc;
+    this.hostLog("cli_start", { command: subcommand[0], cwd, pid: proc.pid });
     let buf = "";
     proc.stdout.on("data", (chunk: Buffer) => {
       buf += chunk.toString();
@@ -98,8 +128,12 @@ class SidebarProvider implements vscode.WebviewViewProvider {
     });
     let stderr = "";
     proc.stderr.on("data", (c: Buffer) => { stderr += c.toString(); this.post({ type: "log", text: c.toString() }); });
-    proc.on("error", (e) => this.post({ type: "error", message: `Could not start "${cmd}": ${e.message}` }));
+    proc.on("error", (e) => {
+      this.hostLog("cli_spawn_error", { command: cmd, message: e.message });
+      this.post({ type: "error", message: `Could not start "${cmd}": ${e.message}` });
+    });
     proc.on("close", (code, signal) => {
+      this.hostLog("cli_exit", { command: subcommand[0], code, signal, stderr_tail: stderr.slice(-600) });
       if (tmp) { fs.rmSync(tmp, { force: true }); }
       if (proc !== this.proc) { return; }
       if (signal) { this.post({ type: "cancelled" }); }
@@ -151,6 +185,7 @@ class SidebarProvider implements vscode.WebviewViewProvider {
     // Confirm it really landed: an applied patch can be reversed cleanly.
     const landed = r.status === 0 && run("apply", "--check", "-R").status === 0;
     fs.rmSync(tmp, { force: true });
+    this.hostLog("apply_result", { landed, status: r.status, stderr: (r.stderr ?? "").slice(0, 400), files: [...this.finalDiff.matchAll(/^\+\+\+ b\/(.+)$/gm)].map((m) => m[1]) });
     if (!landed) {
       vscode.window.showErrorMessage(`Verifix: patch was not applied. ${r.stderr || "git reported success but no files changed."}`);
       return;
@@ -186,6 +221,7 @@ export function activate(ctx: vscode.ExtensionContext): void {
   ctx.subscriptions.push(
     vscode.window.registerWebviewViewProvider("verifix.sidebar", provider),
     vscode.commands.registerCommand("verifix.refreshIssues", () => provider.refreshIssues()),
+    vscode.commands.registerCommand("verifix.openLogs", () => provider.openLatestLog()),
     vscode.commands.registerCommand("verifix.run", () => vscode.commands.executeCommand("verifix.sidebar.focus")),
   );
 }

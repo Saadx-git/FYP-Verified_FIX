@@ -28,7 +28,7 @@ class RequirementVerifier(Verifier):
                          for r in issue.requirements) or "- R1: the issue is resolved as described"
         user = (f"{issue_text(context)}\n\nRequirements:\n{reqs}\n\nPlanned intent: {context.patch.plan.summary}\n\n"
                 f"Test/analysis outcomes:\n{prior_text(context)}\n\nDiff:\n{context.patch.diff[:MAX_DIFF]}")
-        data, tokens = ask_json(self.client, self.model, SYSTEM, user)
+        data, tokens = ask_json(self.client, self.model, SYSTEM, user, "requirement")
         verdicts = [v for v in data.get("requirements", []) if isinstance(v, dict)]
         if not verdicts:
             return VerificationResult(self.name, VerificationStatus.UNCERTAIN, 0.0,
