@@ -16,3 +16,4 @@ extension/out/
 data/
 .workspaces/
 **/.verifix/logs/
+.obsidian-index/
